@@ -187,6 +187,41 @@ def cmd_autopilot_status(a):
     emit(safe_call(list_autopilot_runs, resolve_repo(a.repo)))
 
 
+def cmd_autopilot_run(a):
+    if a.apply and not a.yes:
+        emit({"status": "blocked", "reason": "confirmation_required", "hint": "applying patches requires --apply --yes together"})
+        return
+    from uacos.autopilot.orchestrator import autopilot_run
+    emit(safe_call(
+        autopilot_run,
+        resolve_repo(a.repo),
+        Path(a.task_file).resolve(),
+        adapter=a.adapter,
+        agent_output=Path(a.agent_output).resolve() if a.agent_output else None,
+        patch_file=Path(a.patch).resolve() if a.patch else None,
+        apply_changes=a.apply,
+    ))
+
+
+def cmd_autopilot_loop(a):
+    if not a.yes:
+        emit({"status": "blocked", "reason": "confirmation_required", "hint": "autopilot-loop applies patches automatically across iterations; re-run with --yes to confirm"})
+        return
+    from uacos.autopilot.orchestrator import autopilot_loop
+    emit(safe_call(
+        autopilot_loop,
+        resolve_repo(a.repo),
+        a.title,
+        a.objective,
+        max_iterations=a.max_iterations,
+        adapter=a.adapter,
+        allowed_files=a.allowed_file,
+        allowed_dirs=a.allowed_dir,
+        tests=a.test,
+        risk_level=a.risk_level,
+    ))
+
+
 def cmd_js_ts_scan(a):
     from uacos.ast_engine.js_parser import parse_repo_js_ts
     result = safe_call(parse_repo_js_ts, resolve_repo(a.repo))
@@ -417,7 +452,7 @@ def cmd_task(a):
 
 
 KNOWN_COMMANDS = {
-    "init", "bootstrap", "health", "graph-build", "auto", "auto-install", "impact", "compress-cache", "context-compressed", "tx-list", "runtime-init", "runtime-status", "job-create", "job-run-once", "job-list", "phase30-validate", "mcp-self-test", "mcp-serve", "dashboard", "vscode-init", "vscode-extension", "scan", "context", "skill-suggest", "patch-check", "patch20-validate", "semantic-index", "context-budget", "feedback-recommend", "autopilot-plan", "autopilot-status", "js-ts-scan", "fullstack-index", "fullstack-impact", "fullstack-context", "llm33-init", "llm33-allow-real", "llm33-disallow-real", "llm33-provider", "llm33-probe", "llm-run-real", "llm33-status", "budget33-set", "budget33-status", "budget33-reset", "cache34-benchmark", "cache-status", "cache-clear", "skill-list", "skill-stats", "skill-doctor", "skill-prune", "skill-dedupe", "skill-clear", "skill-export", "skill-import", "skill-publish", "skill-pull", "skill35-benchmark", "skill35-status", "learn-summary", "learn-review", "learn-text", "experience-recall", "-h", "--help",
+    "init", "bootstrap", "health", "graph-build", "auto", "auto-install", "impact", "compress-cache", "context-compressed", "tx-list", "runtime-init", "runtime-status", "job-create", "job-run-once", "job-list", "phase30-validate", "mcp-self-test", "mcp-serve", "dashboard", "vscode-init", "vscode-extension", "scan", "context", "skill-suggest", "patch-check", "patch20-validate", "semantic-index", "context-budget", "feedback-recommend", "autopilot-plan", "autopilot-status", "autopilot-run", "autopilot-loop", "js-ts-scan", "fullstack-index", "fullstack-impact", "fullstack-context", "llm33-init", "llm33-allow-real", "llm33-disallow-real", "llm33-provider", "llm33-probe", "llm-run-real", "llm33-status", "budget33-set", "budget33-status", "budget33-reset", "cache34-benchmark", "cache-status", "cache-clear", "skill-list", "skill-stats", "skill-doctor", "skill-prune", "skill-dedupe", "skill-clear", "skill-export", "skill-import", "skill-publish", "skill-pull", "skill35-benchmark", "skill35-status", "learn-summary", "learn-review", "learn-text", "experience-recall", "-h", "--help",
 }
 
 
@@ -483,6 +518,8 @@ def build_parser():
     s = add("feedback-recommend", cmd_feedback_recommend); s.add_argument("--task", required=True); s.add_argument("--limit", type=int, default=5)
     s = add("autopilot-plan", cmd_autopilot_plan); s.add_argument("--title", required=True); s.add_argument("--objective", required=True); s.add_argument("--allowed-file", action="append"); s.add_argument("--allowed-dir", action="append"); s.add_argument("--test", action="append")
     add("autopilot-status", cmd_autopilot_status)
+    s = add("autopilot-run", cmd_autopilot_run); s.add_argument("--task-file", required=True); s.add_argument("--adapter", default=None); s.add_argument("--agent-output", default=None); s.add_argument("--patch", default=None); s.add_argument("--apply", action="store_true"); s.add_argument("--yes", action="store_true")
+    s = add("autopilot-loop", cmd_autopilot_loop); s.add_argument("--title", required=True); s.add_argument("--objective", required=True); s.add_argument("--max-iterations", type=int, default=3); s.add_argument("--adapter", default=None); s.add_argument("--allowed-file", action="append"); s.add_argument("--allowed-dir", action="append"); s.add_argument("--test", action="append"); s.add_argument("--risk-level", default="normal"); s.add_argument("--yes", action="store_true")
 
     add("js-ts-scan", cmd_js_ts_scan)
     add("fullstack-index", cmd_fullstack_index)

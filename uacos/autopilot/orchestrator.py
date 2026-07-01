@@ -171,6 +171,48 @@ def autopilot_run(repo_root: Path, task_file: Path, adapter: str | None = None, 
     run["ops_summary"] = ops_summary(repo_root)
     return save_run(repo_root, run)
 
+LOOPABLE_ADAPTERS = {"openclaw_cli", "aider_cli", "ollama_openai"}
+
+def autopilot_loop(repo_root: Path, title: str, objective: str, max_iterations: int = 3, adapter: str | None = None, allowed_files=None, allowed_dirs=None, tests=None, commands=None, risk_level: str = "normal", auto_learn: bool | None = None, auto_approve_learning: bool | None = None) -> dict:
+    config = load_autopilot_config(repo_root)
+    adapter = adapter or config.get("default_adapter", "manual_chat")
+    if adapter not in LOOPABLE_ADAPTERS:
+        return {
+            "status": "blocked",
+            "reason": "adapter_cannot_loop_unattended",
+            "adapter": adapter,
+            "hint": f"autopilot-loop needs an adapter that runs without a human in the loop ({sorted(LOOPABLE_ADAPTERS)}); use autopilot-plan + autopilot-run for a manual pass with '{adapter}'",
+        }
+    if max_iterations < 1:
+        return {"status": "blocked", "reason": "max_iterations_must_be_at_least_1"}
+
+    plan = autopilot_plan(repo_root, title, objective, allowed_files=allowed_files, allowed_dirs=allowed_dirs, tests=tests, commands=commands, risk_level=risk_level)
+    task_file = Path(plan["task_file"])
+
+    attempts = []
+    final_run = None
+    for i in range(1, max_iterations + 1):
+        run = autopilot_run(repo_root, task_file, adapter=adapter, apply_changes=True, auto_learn=auto_learn, auto_approve_learning=auto_approve_learning)
+        attempts.append({"iteration": i, "run_id": run.get("id"), "status": run.get("status")})
+        final_run = run
+        if run.get("status") == "done":
+            break
+
+    succeeded = bool(final_run and final_run.get("status") == "done")
+    return {
+        "status": "done" if succeeded else "exhausted",
+        "title": title,
+        "objective": objective,
+        "adapter": adapter,
+        "max_iterations": max_iterations,
+        "iterations_used": len(attempts),
+        "attempts": attempts,
+        "task_file": str(task_file),
+        "final_run_id": final_run.get("id") if final_run else None,
+        "final_run_status": final_run.get("status") if final_run else None,
+        "created_at": utcnow(),
+    }
+
 def list_autopilot_runs(repo_root: Path) -> dict:
     d = autopilot_runs_dir(repo_root)
     rows = []

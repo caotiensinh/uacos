@@ -47,6 +47,7 @@ $ python -m uacos.cli auto --repo . --summary
 
 - [User Guide](docs/USER_GUIDE.md)
 - [Auto Mode](docs/AUTO_MODE.md)
+- [Autopilot Mode](docs/AUTOPILOT_MODE.md)
 - [Installation](docs/INSTALLATION.md)
 - [Security Model](docs/SECURITY_MODEL.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)

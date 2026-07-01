@@ -13,6 +13,7 @@ Local-first code intelligence, context-compression, and release-gate toolkit for
 - [Installation](INSTALLATION.md)
 - [User Guide](USER_GUIDE.md)
 - [Auto Mode](AUTO_MODE.md)
+- [Autopilot Mode](AUTOPILOT_MODE.md)
 - [Security Model](SECURITY_MODEL.md)
 - [Troubleshooting](TROUBLESHOOTING.md)
 

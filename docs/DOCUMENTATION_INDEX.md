@@ -17,6 +17,7 @@ Root documentation is intentionally minimal. Current docs stay small; historical
 - [USER_GUIDE.md](USER_GUIDE.md) - Short guide for Auto Mode and CLI usage
 
 - [AUTO_MODE.md](AUTO_MODE.md) - Auto setup and watch mode for non-CLI users
+- [AUTOPILOT_MODE.md](AUTOPILOT_MODE.md) - Bounded, opt-in patch-apply retry loop with the same safety gates as manual patching
 
 - [MASTER_DOCUMENTATION.md](MASTER_DOCUMENTATION.md) - Canonical overview and navigation
 - [PRODUCTION_10_10_SCORECARD.md](PRODUCTION_10_10_SCORECARD.md) - Current production-readiness scorecard

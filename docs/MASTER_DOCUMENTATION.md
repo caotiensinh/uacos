@@ -14,6 +14,8 @@ This is the canonical entry point for the current UACOS documentation set.
 
 - [Auto Mode](AUTO_MODE.md)
 
+- [Autopilot Mode](AUTOPILOT_MODE.md)
+
 - [Production 10/10 Scorecard](PRODUCTION_10_10_SCORECARD.md)
 - [Sprint Roadmap v4 To Beta](SPRINT_ROADMAP_V4_TO_BETA.md)
 - [Known Issues](KNOWN_ISSUES.md)
