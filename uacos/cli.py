@@ -107,6 +107,11 @@ def cmd_mcp_serve(a):
     serve_mcp(resolve_repo(a.repo), host=a.host, port=a.port)
 
 
+def cmd_dashboard(a):
+    from uacos.dashboard.server import run_dashboard
+    run_dashboard(resolve_repo(a.repo), host=a.host, port=a.port)
+
+
 def cmd_js_ts_scan(a):
     from uacos.ast_engine.js_parser import parse_repo_js_ts
     result = safe_call(parse_repo_js_ts, resolve_repo(a.repo))
@@ -337,7 +342,7 @@ def cmd_task(a):
 
 
 KNOWN_COMMANDS = {
-    "init", "bootstrap", "health", "graph-build", "auto", "auto-install", "impact", "compress-cache", "context-compressed", "tx-list", "runtime-init", "runtime-status", "job-create", "job-run-once", "job-list", "phase30-validate", "mcp-self-test", "mcp-serve", "js-ts-scan", "fullstack-index", "fullstack-impact", "fullstack-context", "llm33-init", "llm33-allow-real", "llm33-disallow-real", "llm33-provider", "llm33-probe", "llm-run-real", "llm33-status", "budget33-set", "budget33-status", "budget33-reset", "cache34-benchmark", "cache-status", "cache-clear", "skill-list", "skill-stats", "skill-doctor", "skill-prune", "skill-dedupe", "skill-clear", "skill-export", "skill-import", "skill-publish", "skill-pull", "skill35-benchmark", "skill35-status", "learn-summary", "learn-review", "learn-text", "experience-recall", "-h", "--help",
+    "init", "bootstrap", "health", "graph-build", "auto", "auto-install", "impact", "compress-cache", "context-compressed", "tx-list", "runtime-init", "runtime-status", "job-create", "job-run-once", "job-list", "phase30-validate", "mcp-self-test", "mcp-serve", "dashboard", "js-ts-scan", "fullstack-index", "fullstack-impact", "fullstack-context", "llm33-init", "llm33-allow-real", "llm33-disallow-real", "llm33-provider", "llm33-probe", "llm-run-real", "llm33-status", "budget33-set", "budget33-status", "budget33-reset", "cache34-benchmark", "cache-status", "cache-clear", "skill-list", "skill-stats", "skill-doctor", "skill-prune", "skill-dedupe", "skill-clear", "skill-export", "skill-import", "skill-publish", "skill-pull", "skill35-benchmark", "skill35-status", "learn-summary", "learn-review", "learn-text", "experience-recall", "-h", "--help",
 }
 
 
@@ -389,6 +394,7 @@ def build_parser():
     s = add("phase30-validate", cmd_phase30_validate); s.add_argument("--no-runtime", action="store_true")
     add("mcp-self-test", cmd_mcp_self_test)
     s = add("mcp-serve", cmd_mcp_serve); s.add_argument("--host", default="127.0.0.1"); s.add_argument("--port", type=int, default=8769)
+    s = add("dashboard", cmd_dashboard); s.add_argument("--host", default="127.0.0.1"); s.add_argument("--port", type=int, default=8765)
 
     add("js-ts-scan", cmd_js_ts_scan)
     add("fullstack-index", cmd_fullstack_index)
