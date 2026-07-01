@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uacos"
+version = "4.1.0b1"
+description = "Local-first code intelligence, auto context, cache, MCP, and release-gate tooling for software projects."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+  { name = "UACOS maintainers" }
+]
+keywords = ["code-intelligence", "llm", "developer-tools", "mcp", "release-gate", "context-compression"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+dev = ["pytest>=7", "build>=1.0"]
+
+[project.scripts]
+uacos = "uacos.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/caotiensinh/uacos"
+Documentation = "https://github.com/caotiensinh/uacos/tree/main/docs"
+Issues = "https://github.com/caotiensinh/uacos/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["uacos*"]
+exclude = ["uacos_phase35_full*", "test_out*", "out*", "_uacos*"]
