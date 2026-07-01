@@ -90,7 +90,7 @@ def no_pycache_in_release() -> dict:
 
 
 def install_smoke_test() -> dict:
-    cmd = ["sh", str(ROOT / "scripts" / "install_smoke_test.sh")]
+    cmd = ["bash", str(ROOT / "scripts" / "install_smoke_test.sh")]
     check = run("install_smoke_test", cmd, timeout=300)
     if check["returncode"] != 0:
         check["ok"] = False
