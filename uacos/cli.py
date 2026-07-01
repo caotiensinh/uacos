@@ -112,6 +112,81 @@ def cmd_dashboard(a):
     run_dashboard(resolve_repo(a.repo), host=a.host, port=a.port)
 
 
+def cmd_vscode_init(a):
+    from uacos.ide.vscode import write_vscode_files
+    emit(safe_call(write_vscode_files, resolve_repo(a.repo), dashboard_port=a.dashboard_port, overwrite=a.overwrite))
+
+
+def cmd_vscode_extension(a):
+    from uacos.ide.vscode import write_extension_skeleton
+    from uacos.ide.vscode_pro import write_vscode_pro_extension
+    output = Path(a.output).resolve()
+    builder = write_vscode_pro_extension if a.pro else write_extension_skeleton
+    emit(safe_call(builder, output, overwrite=a.overwrite))
+
+
+def cmd_scan(a):
+    from uacos.storage import init_storage
+    from uacos.scanner.file_scanner import scan_repo
+    repo = resolve_repo(a.repo)
+    def _run():
+        init_storage(repo)
+        return scan_repo(repo)
+    emit(safe_call(_run))
+
+
+def cmd_context(a):
+    from uacos.retrieval.context_pack import build_context_pack
+    result = safe_call(build_context_pack, resolve_repo(a.repo), a.task, max_tokens=a.max_tokens, search_limit=a.search_limit)
+    if isinstance(result, dict) and "content" in result and not a.show_content:
+        result = {k: v for k, v in result.items() if k != "content"}
+    emit(result)
+
+
+def cmd_skill_suggest(a):
+    from uacos.skill.store import suggest_skills
+    emit(safe_call(suggest_skills, resolve_repo(a.repo), a.task, limit=a.limit))
+
+
+def cmd_patch_check(a):
+    from uacos.security.patch_gate import validate_patch_file
+    emit(safe_call(validate_patch_file, Path(a.patch).resolve(), allowed_files=a.allowed_file, allowed_dirs=a.allowed_dir))
+
+
+def cmd_patch20_validate(a):
+    from uacos.patching.engine import validate_patch
+    patch_text = Path(a.patch).read_text(encoding="utf-8", errors="replace")
+    emit(safe_call(validate_patch, resolve_repo(a.repo), patch_text, allowed_files=a.allowed_file, allowed_dirs=a.allowed_dir))
+
+
+def cmd_semantic_index(a):
+    from uacos.semantic.search import build_semantic_index
+    emit(safe_call(build_semantic_index, resolve_repo(a.repo)))
+
+
+def cmd_context_budget(a):
+    from uacos.budget.optimizer import build_budgeted_context
+    result = safe_call(build_budgeted_context, resolve_repo(a.repo), a.task, profile=a.profile, max_tokens=a.max_tokens)
+    if isinstance(result, dict) and "content" in result and not a.show_content:
+        result = {k: v for k, v in result.items() if k != "content"}
+    emit(result)
+
+
+def cmd_feedback_recommend(a):
+    from uacos.learning.feedback import recommend_skills
+    emit(safe_call(recommend_skills, resolve_repo(a.repo), a.task, limit=a.limit))
+
+
+def cmd_autopilot_plan(a):
+    from uacos.autopilot.orchestrator import autopilot_plan
+    emit(safe_call(autopilot_plan, resolve_repo(a.repo), a.title, a.objective, allowed_files=a.allowed_file, allowed_dirs=a.allowed_dir, tests=a.test))
+
+
+def cmd_autopilot_status(a):
+    from uacos.autopilot.orchestrator import list_autopilot_runs
+    emit(safe_call(list_autopilot_runs, resolve_repo(a.repo)))
+
+
 def cmd_js_ts_scan(a):
     from uacos.ast_engine.js_parser import parse_repo_js_ts
     result = safe_call(parse_repo_js_ts, resolve_repo(a.repo))
@@ -342,7 +417,7 @@ def cmd_task(a):
 
 
 KNOWN_COMMANDS = {
-    "init", "bootstrap", "health", "graph-build", "auto", "auto-install", "impact", "compress-cache", "context-compressed", "tx-list", "runtime-init", "runtime-status", "job-create", "job-run-once", "job-list", "phase30-validate", "mcp-self-test", "mcp-serve", "dashboard", "js-ts-scan", "fullstack-index", "fullstack-impact", "fullstack-context", "llm33-init", "llm33-allow-real", "llm33-disallow-real", "llm33-provider", "llm33-probe", "llm-run-real", "llm33-status", "budget33-set", "budget33-status", "budget33-reset", "cache34-benchmark", "cache-status", "cache-clear", "skill-list", "skill-stats", "skill-doctor", "skill-prune", "skill-dedupe", "skill-clear", "skill-export", "skill-import", "skill-publish", "skill-pull", "skill35-benchmark", "skill35-status", "learn-summary", "learn-review", "learn-text", "experience-recall", "-h", "--help",
+    "init", "bootstrap", "health", "graph-build", "auto", "auto-install", "impact", "compress-cache", "context-compressed", "tx-list", "runtime-init", "runtime-status", "job-create", "job-run-once", "job-list", "phase30-validate", "mcp-self-test", "mcp-serve", "dashboard", "vscode-init", "vscode-extension", "scan", "context", "skill-suggest", "patch-check", "patch20-validate", "semantic-index", "context-budget", "feedback-recommend", "autopilot-plan", "autopilot-status", "js-ts-scan", "fullstack-index", "fullstack-impact", "fullstack-context", "llm33-init", "llm33-allow-real", "llm33-disallow-real", "llm33-provider", "llm33-probe", "llm-run-real", "llm33-status", "budget33-set", "budget33-status", "budget33-reset", "cache34-benchmark", "cache-status", "cache-clear", "skill-list", "skill-stats", "skill-doctor", "skill-prune", "skill-dedupe", "skill-clear", "skill-export", "skill-import", "skill-publish", "skill-pull", "skill35-benchmark", "skill35-status", "learn-summary", "learn-review", "learn-text", "experience-recall", "-h", "--help",
 }
 
 
@@ -395,6 +470,19 @@ def build_parser():
     add("mcp-self-test", cmd_mcp_self_test)
     s = add("mcp-serve", cmd_mcp_serve); s.add_argument("--host", default="127.0.0.1"); s.add_argument("--port", type=int, default=8769)
     s = add("dashboard", cmd_dashboard); s.add_argument("--host", default="127.0.0.1"); s.add_argument("--port", type=int, default=8765)
+    s = add("vscode-init", cmd_vscode_init); s.add_argument("--dashboard-port", type=int, default=8765); s.add_argument("--overwrite", action="store_true")
+    s = add("vscode-extension", cmd_vscode_extension, repo=False); s.add_argument("--output", default="./vscode-uacos"); s.add_argument("--pro", action="store_true"); s.add_argument("--overwrite", action="store_true")
+
+    add("scan", cmd_scan)
+    s = add("context", cmd_context); s.add_argument("--task", required=True); s.add_argument("--max-tokens", type=int, default=3500); s.add_argument("--search-limit", type=int, default=8); s.add_argument("--show-content", action="store_true")
+    s = add("skill-suggest", cmd_skill_suggest); s.add_argument("--task", required=True); s.add_argument("--limit", type=int, default=5)
+    s = add("patch-check", cmd_patch_check); s.add_argument("--patch", required=True); s.add_argument("--allowed-file", action="append"); s.add_argument("--allowed-dir", action="append")
+    s = add("patch20-validate", cmd_patch20_validate); s.add_argument("--patch", required=True); s.add_argument("--allowed-file", action="append"); s.add_argument("--allowed-dir", action="append")
+    add("semantic-index", cmd_semantic_index)
+    s = add("context-budget", cmd_context_budget); s.add_argument("--task", required=True); s.add_argument("--profile", default=None); s.add_argument("--max-tokens", type=int, default=None); s.add_argument("--show-content", action="store_true")
+    s = add("feedback-recommend", cmd_feedback_recommend); s.add_argument("--task", required=True); s.add_argument("--limit", type=int, default=5)
+    s = add("autopilot-plan", cmd_autopilot_plan); s.add_argument("--title", required=True); s.add_argument("--objective", required=True); s.add_argument("--allowed-file", action="append"); s.add_argument("--allowed-dir", action="append"); s.add_argument("--test", action="append")
+    add("autopilot-status", cmd_autopilot_status)
 
     add("js-ts-scan", cmd_js_ts_scan)
     add("fullstack-index", cmd_fullstack_index)
