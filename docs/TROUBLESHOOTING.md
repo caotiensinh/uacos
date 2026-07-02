@@ -40,10 +40,24 @@ Run the failing command shown in the report.
 
 ## Need full debug output
 
-Set:
+Set the environment variable, then rerun the command:
 
 ```bash
+# Windows (cmd)
 set UACOS_DEBUG=1
+
+# Windows (PowerShell)
+$env:UACOS_DEBUG=1
+
+# macOS / Linux
+export UACOS_DEBUG=1
 ```
 
-Then rerun the command.
+## Dashboard or MCP server won't start
+
+Both bind to `127.0.0.1` only, by design (see [Security Model](SECURITY_MODEL.md)). If the port is already in use, pick a different `--port`:
+
+```bash
+python -m uacos.cli dashboard --repo . --port 8766
+python -m uacos.cli mcp-serve --repo . --port 8770
+```

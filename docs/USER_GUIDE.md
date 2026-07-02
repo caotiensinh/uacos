@@ -99,6 +99,8 @@ Run full release gate:
 python scripts/release_gate.py
 ```
 
+UACOS has many more commands (semantic search, patch validation, skill management, budget control, etc.). Run `uacos --help` for the full, current list rather than relying on any single doc to enumerate it.
+
 ## 4. Performance Report
 
 Measure token savings:
@@ -113,14 +115,29 @@ Report:
 reports/uacos_performance_report.json
 ```
 
-## 5. Safety Rules
+## 5. IDE Integration And Dashboard
+
+Generate VSCode task/settings files and a local web dashboard:
+
+```bash
+python -m uacos.cli vscode-init --repo .
+python -m uacos.cli dashboard --repo . --host 127.0.0.1 --port 8765
+```
+
+The dashboard is local-only (binds `127.0.0.1`) and shows repo stats, search, context packs, memory, cache, and change manifests at `http://127.0.0.1:8765/`.
+
+## 6. Autopilot Mode
+
+For an opt-in, bounded loop that actually applies patches (with the same scope/secret gates and automatic rollback as manual patching), see [Autopilot Mode](AUTOPILOT_MODE.md). Auto Mode above never applies patches by itself; Autopilot Mode does, but only when you explicitly confirm with `--yes`.
+
+## 7. Safety Rules
 
 - Auto Mode does not apply patches by itself.
 - Auto Mode does not create releases.
 - Real LLM execution stays guarded by config and budget limits.
 - Do not release if `python scripts/release_gate.py` fails.
 
-## 6. Dogfood This Repo After Every Upgrade
+## 8. Dogfood This Repo After Every Upgrade
 
 Use these commands when improving UACOS itself:
 

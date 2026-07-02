@@ -14,4 +14,4 @@ The current supported public beta line is `4.1.0-beta`.
 
 ## Reporting Issues
 
-Report security issues privately to the project maintainers. Include reproduction steps, affected commands, and expected impact.
+Report security issues privately via [GitHub Security Advisories](https://github.com/caotiensinh/uacos/security/advisories/new) rather than a public issue. Include reproduction steps, affected commands, and expected impact. Do not include real secrets or production data in the report.
