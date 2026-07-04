@@ -11,6 +11,32 @@ from uacos.config import uacos_dir
 from uacos.patching.engine import validate_patch, apply_patch as patch20_apply, rollback_patch as patch20_rollback
 from uacos.learning.feedback import feedback_summary
 from uacos.metrics.production import collect_production_metrics
+from uacos.security.diff_parser import parse_unified_diff as parse_diff_for_secret_scan
+from uacos.security.secret_scan import scan_text_for_secrets
+
+def scan_patch_text_for_secrets(patch_text: str) -> list:
+    """Secret scan for added lines, independent of uacos.patching.engine.validate_patch.
+
+    validate_patch (patching/engine.py) does its own scope/hunk validation but
+    has no secret detection at all — unlike uacos.security.patch_gate.validate_patch_text,
+    which every apply_patch_with_backup() call goes through. run_transaction()
+    uses validate_patch, not validate_patch_text, so without this it would
+    commit secrets that the apply_patch_with_backup path would block. Reuses
+    the same parser/scanner patch_gate.py uses rather than re-implementing it.
+    """
+    findings = []
+    for fp in parse_diff_for_secret_scan(patch_text):
+        added_text = "\n".join(fp.added_lines)
+        for secret in scan_text_for_secrets(added_text, fp.path):
+            findings.append({
+                "severity": secret["severity"],
+                "type": "secret_in_added_lines",
+                "path": fp.path,
+                "line": secret["line"],
+                "message": secret["type"],
+                "evidence": secret["evidence"],
+            })
+    return findings
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -142,6 +168,16 @@ def run_transaction(repo_root: Path, patch_file: Path, title: str = "Transaction
         manifest["updated_at"] = utcnow()
         _append_event(repo_root, manifest, "transaction_blocked", {"reason": "patch_validation_failed"})
         return _write_manifest(repo_root, manifest)
+
+    secret_findings = scan_patch_text_for_secrets(patch_text)
+    manifest["secret_scan"] = {"findings": secret_findings}
+    _append_event(repo_root, manifest, "secret_scan_completed", {"findings_count": len(secret_findings)})
+    if any(f["severity"] == "high" for f in secret_findings):
+        manifest["status"] = "blocked"
+        manifest["updated_at"] = utcnow()
+        _append_event(repo_root, manifest, "transaction_blocked", {"reason": "secret_detected_in_patch"})
+        return _write_manifest(repo_root, manifest)
+
     if dry_run:
         manifest["status"] = "planned"
         manifest["updated_at"] = utcnow()
