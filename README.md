@@ -4,7 +4,7 @@
 ![License](https://img.shields.io/github/license/caotiensinh/uacos)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 
-UACOS is a local-first code intelligence, context-compression, and release-gate toolkit that makes AI-assisted changes to a repository safer and cheaper — typed project memory, patch-scope safety gates, secret scanning, transaction rollback, an LLM cache/budget layer, and a built-in MCP server, all running locally with no cloud dependency.
+UACOS is a local-first code intelligence, context-compression, and release-gate toolkit that makes AI-assisted changes to a repository safer and cheaper — typed project memory, dependency-graph impact analysis that scopes changes before they're made, patch-scope safety gates, secret scanning, transaction rollback, an LLM cache/budget layer, and a built-in MCP server, all running locally with no cloud dependency.
 
 ## Requirements
 
