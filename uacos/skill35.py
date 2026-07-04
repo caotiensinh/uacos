@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from uacos.cache.similarity import semantic_similarity
+from uacos.skill.store import add_skill, read_skills
 
 
 def _dir(repo):
@@ -68,18 +69,6 @@ def _save_file(path, data):
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def _official_available():
-    try:
-        from uacos.skill import store  # noqa: F401
-        return True
-    except Exception:
-        return False
-
-
-def _official_status_suffix(payload):
-    if isinstance(payload, dict):
-        payload.setdefault("source", "uacos.skill.store")
-    return payload
 
 
 def score(skill, task):
@@ -237,7 +226,11 @@ def clear(repo):
 
 
 def export_skills(repo, out_file="skills_export.json"):
-    data = list_skills(repo)
+    # Exports from uacos.skill.store (the store context_pack/autopilot/MCP
+    # actually read), not the skill35-local experience-recall data below —
+    # per this module's own "Phase 42" rule, skill sharing must route to the
+    # official store so an exported skill is genuinely reusable elsewhere.
+    data = read_skills(Path(repo), include_inactive=True)
 
     Path(out_file).write_text(
         json.dumps(data, indent=2, ensure_ascii=False),
@@ -248,11 +241,12 @@ def export_skills(repo, out_file="skills_export.json"):
         "status": "ok",
         "exported": len(data),
         "file": out_file,
-        "source": "uacos.skill.store" if _official_available() else "skill35_compat",
+        "source": "uacos.skill.store",
     }
 
 
 def import_skills(repo, in_file):
+    repo = Path(repo)
     path = Path(in_file)
 
     if not path.exists():
@@ -266,24 +260,58 @@ def import_skills(repo, in_file):
     count = 0
 
     for skill in data:
-        save(
-            repo,
-            skill.get("task", ""),
-            skill.get("response", ""),
-            tags=skill.get("tags", []),
-            source=skill.get("source", "imported"),
-        )
+        if not isinstance(skill, dict):
+            continue
+        if "title" in skill:
+            # Already in uacos.skill.store's schema (e.g. from export_skills).
+            add_skill(
+                repo,
+                title=skill.get("title", ""),
+                problem_signatures=skill.get("problem_signatures"),
+                root_cause=skill.get("root_cause", ""),
+                solution_steps=skill.get("solution_steps"),
+                commands=skill.get("commands"),
+                verification=skill.get("verification"),
+                applies_to=skill.get("applies_to"),
+                category=skill.get("category", "general"),
+                source=skill.get("source", "imported"),
+                confidence=float(skill.get("confidence", 0.6)),
+                status="candidate",
+                tags=skill.get("tags"),
+            )
+        else:
+            # Legacy skill35 shape (task/response) — map onto the official schema.
+            task = skill.get("task", "")
+            response = skill.get("response", "")
+            add_skill(
+                repo,
+                title=task or "Imported skill",
+                problem_signatures=[task] if task else [],
+                root_cause="",
+                solution_steps=[response] if response else [],
+                commands=[],
+                verification=[],
+                applies_to=[],
+                category="general",
+                source=skill.get("source", "imported"),
+                confidence=0.6,
+                status="candidate",
+                tags=skill.get("tags"),
+            )
         count += 1
 
     return {
         "status": "ok",
         "imported": count,
-        "source": "uacos.skill.store" if _official_available() else "skill35_compat",
+        "source": "uacos.skill.store",
     }
 
 
 def publish_to_hub(repo):
-    data = list_skills(repo)
+    # "Hub" is a local file (.uacos/skill_hub/skills_hub.json), not a network
+    # endpoint — see pull_from_hub. Publishes from uacos.skill.store, same
+    # reasoning as export_skills above.
+    data = read_skills(Path(repo), include_inactive=True)
     out = _hub(repo) / "skills_hub.json"
 
     out.write_text(
@@ -295,7 +323,7 @@ def publish_to_hub(repo):
         "status": "ok",
         "published": len(data),
         "file": str(out),
-        "source": "uacos.skill.store" if _official_available() else "skill35_compat",
+        "source": "uacos.skill.store",
     }
 
 
@@ -307,7 +335,7 @@ def pull_from_hub(repo):
             "status": "ok",
             "imported": 0,
             "reason": "hub_empty",
-            "source": "uacos.skill.store" if _official_available() else "skill35_compat",
+            "source": "uacos.skill.store",
         }
 
     return import_skills(repo, src)
@@ -323,7 +351,7 @@ def stats(repo):
         "total_success": sum(int(s.get("success", 0) or 0) for s in skills),
         "total_failure": sum(int(s.get("failure", 0) or 0) for s in skills),
         "top": skills[:5],
-        "source": "uacos.skill.store" if _official_available() else "skill35_compat",
+        "source": "skill35_local_store",  # honest label: this is .uacos/skill35/, a separate store from uacos.skill.store
     }
 
 
@@ -347,5 +375,5 @@ def doctor(repo):
         "status": "pass" if not issues else "warn",
         "issues": issues,
         "stats": stats(repo),
-        "source": "uacos.skill.store" if _official_available() else "skill35_compat",
+        "source": "skill35_local_store",  # honest label: this is .uacos/skill35/, a separate store from uacos.skill.store
     }
