@@ -15,6 +15,7 @@ from uacos.retrieval.context_pack import build_context_pack
 from uacos.execution.artifacts import ingest_agent_output
 from uacos.apply.patch_apply import apply_patch_with_backup, done_gate
 from uacos.memory.regression import regression_check_patch
+from uacos.impact.analyzer import impact_alignment_check
 from uacos.semantic.search import build_semantic_index
 from uacos.learning.auto import learn_from_file, learn_from_manifest
 from uacos.dashboard.ops_summary import ops_summary
@@ -68,10 +69,23 @@ def save_run(repo_root: Path, run: dict) -> dict:
     run["run_file"] = str(path)
     return run
 
+IMPACT_SCOPE_MIN_SCORE = 0.3
+IMPACT_SCOPE_MAX_FILES = 8
+
 def autopilot_plan(repo_root: Path, title: str, objective: str, allowed_files=None, allowed_dirs=None, tests=None, commands=None, risk_level: str = "normal") -> dict:
     init_autopilot(repo_root)
-    task_file = create_task(repo_root, title=title, objective=objective, allowed_files=allowed_files or [], allowed_dirs=allowed_dirs or [], tests=tests or [], commands=commands or [], risk_level=risk_level)
     context = build_context_pack(repo_root, objective, max_tokens=4500, search_limit=10)
+
+    allowed_files_source = "user"
+    effective_allowed_files = allowed_files or []
+    if not effective_allowed_files:
+        ranked = context.get("impact_ranked_files", [])
+        suggested = [row["file"] for row in ranked if row.get("score", 0) >= IMPACT_SCOPE_MIN_SCORE][:IMPACT_SCOPE_MAX_FILES]
+        if suggested:
+            effective_allowed_files = suggested
+            allowed_files_source = "impact_analysis_auto_suggested"
+
+    task_file = create_task(repo_root, title=title, objective=objective, allowed_files=effective_allowed_files, allowed_dirs=allowed_dirs or [], tests=tests or [], commands=commands or [], risk_level=risk_level)
     return {
         "status": "ok",
         "task_file": str(task_file),
@@ -79,6 +93,8 @@ def autopilot_plan(repo_root: Path, title: str, objective: str, allowed_files=No
         "objective": objective,
         "context_id": context["id"],
         "context_token_count": context["token_count"],
+        "allowed_files": effective_allowed_files,
+        "allowed_files_source": allowed_files_source,
         "gates": ["semantic_index", "context_pack", "adapter", "artifact_ingest", "regression_check", "apply_patch", "done_gate", "auto_learning"],
         "created_at": utcnow(),
     }
@@ -128,6 +144,16 @@ def autopilot_run(repo_root: Path, task_file: Path, adapter: str | None = None, 
     if extracted_patch:
         regression = _safe_step(run, "regression_check", lambda: regression_check_patch(repo_root, extracted_patch))
         if run["status"] == "error": return save_run(repo_root, run)
+        # Informational only: flags files the patch touches that the task's
+        # impact-ranking didn't predict. This step can never mark the run as
+        # error/blocked — impact ranking is a heuristic and legitimately
+        # misses new files, config, and docs, and _safe_step's error path
+        # would otherwise feed into the final-status blocking check below.
+        try:
+            alignment = impact_alignment_check(repo_root, task.get("objective", ""), extracted_patch)
+            run["steps"].append({"name": "impact_alignment", "status": "ok", "result": alignment})
+        except Exception as exc:
+            run["steps"].append({"name": "impact_alignment", "status": "skipped", "error": str(exc)})
 
     manifest = None
     gate = None

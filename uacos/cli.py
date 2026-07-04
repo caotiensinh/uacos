@@ -153,6 +153,11 @@ def cmd_patch_check(a):
     emit(safe_call(validate_patch_file, Path(a.patch).resolve(), allowed_files=a.allowed_file, allowed_dirs=a.allowed_dir))
 
 
+def cmd_impact_alignment_check(a):
+    from uacos.impact.analyzer import impact_alignment_check
+    emit(safe_call(impact_alignment_check, resolve_repo(a.repo), a.task, Path(a.patch).resolve()))
+
+
 def cmd_patch20_validate(a):
     from uacos.patching.engine import validate_patch
     patch_text = Path(a.patch).read_text(encoding="utf-8", errors="replace")
@@ -452,7 +457,7 @@ def cmd_task(a):
 
 
 KNOWN_COMMANDS = {
-    "init", "bootstrap", "health", "graph-build", "auto", "auto-install", "impact", "compress-cache", "context-compressed", "tx-list", "runtime-init", "runtime-status", "job-create", "job-run-once", "job-list", "phase30-validate", "mcp-self-test", "mcp-serve", "dashboard", "vscode-init", "vscode-extension", "scan", "context", "skill-suggest", "patch-check", "patch20-validate", "semantic-index", "context-budget", "feedback-recommend", "autopilot-plan", "autopilot-status", "autopilot-run", "autopilot-loop", "js-ts-scan", "fullstack-index", "fullstack-impact", "fullstack-context", "llm33-init", "llm33-allow-real", "llm33-disallow-real", "llm33-provider", "llm33-probe", "llm-run-real", "llm33-status", "budget33-set", "budget33-status", "budget33-reset", "cache34-benchmark", "cache-status", "cache-clear", "skill-list", "skill-stats", "skill-doctor", "skill-prune", "skill-dedupe", "skill-clear", "skill-export", "skill-import", "skill-publish", "skill-pull", "skill35-benchmark", "skill35-status", "learn-summary", "learn-review", "learn-text", "experience-recall", "-h", "--help",
+    "init", "bootstrap", "health", "graph-build", "auto", "auto-install", "impact", "compress-cache", "context-compressed", "tx-list", "runtime-init", "runtime-status", "job-create", "job-run-once", "job-list", "phase30-validate", "mcp-self-test", "mcp-serve", "dashboard", "vscode-init", "vscode-extension", "scan", "context", "skill-suggest", "patch-check", "patch20-validate", "impact-alignment-check", "semantic-index", "context-budget", "feedback-recommend", "autopilot-plan", "autopilot-status", "autopilot-run", "autopilot-loop", "js-ts-scan", "fullstack-index", "fullstack-impact", "fullstack-context", "llm33-init", "llm33-allow-real", "llm33-disallow-real", "llm33-provider", "llm33-probe", "llm-run-real", "llm33-status", "budget33-set", "budget33-status", "budget33-reset", "cache34-benchmark", "cache-status", "cache-clear", "skill-list", "skill-stats", "skill-doctor", "skill-prune", "skill-dedupe", "skill-clear", "skill-export", "skill-import", "skill-publish", "skill-pull", "skill35-benchmark", "skill35-status", "learn-summary", "learn-review", "learn-text", "experience-recall", "-h", "--help",
 }
 
 
@@ -513,6 +518,7 @@ def build_parser():
     s = add("skill-suggest", cmd_skill_suggest); s.add_argument("--task", required=True); s.add_argument("--limit", type=int, default=5)
     s = add("patch-check", cmd_patch_check); s.add_argument("--patch", required=True); s.add_argument("--allowed-file", action="append"); s.add_argument("--allowed-dir", action="append")
     s = add("patch20-validate", cmd_patch20_validate); s.add_argument("--patch", required=True); s.add_argument("--allowed-file", action="append"); s.add_argument("--allowed-dir", action="append")
+    s = add("impact-alignment-check", cmd_impact_alignment_check); s.add_argument("--task", required=True); s.add_argument("--patch", required=True)
     add("semantic-index", cmd_semantic_index)
     s = add("context-budget", cmd_context_budget); s.add_argument("--task", required=True); s.add_argument("--profile", default=None); s.add_argument("--max-tokens", type=int, default=None); s.add_argument("--show-content", action="store_true")
     s = add("feedback-recommend", cmd_feedback_recommend); s.add_argument("--task", required=True); s.add_argument("--limit", type=int, default=5)

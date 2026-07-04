@@ -9,6 +9,7 @@ from uacos.storage import connect
 from uacos.memory.store import memory_summary_for_task
 from uacos.skill.store import skill_summary_for_task
 from uacos.semantic.search import semantic_context
+from uacos.impact.analyzer import impact_by_task
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -19,6 +20,11 @@ def _hash(text: str) -> str:
 def build_context_pack(repo_root: Path, task: str, max_tokens: int = 3500, search_limit: int = 8) -> dict:
     hits = search_repo(repo_root, task, limit=search_limit)
     repo_map = get_repo_map(repo_root, query=task, max_tokens=max(800, max_tokens // 2))
+    try:
+        impact = impact_by_task(repo_root, task, limit=search_limit)
+        impact_ranked_files = impact.get("impacted_files", [])
+    except Exception:
+        impact_ranked_files = []
     snippets = []
 
     conn = connect(repo_root)
@@ -56,6 +62,18 @@ def build_context_pack(repo_root: Path, task: str, max_tokens: int = 3500, searc
         "- Do not access secret-like files such as `.env`, `*.pem`, `*.key`.",
         "- Ask for scope expansion if more files are required.",
         "- Do not claim DONE without tests or explicit validation evidence.",
+        "- Prefer touching files from the Impact Analysis ranking below. If a change requires a file not listed there, say why before editing it.",
+        "",
+        "## Impact Analysis",
+        "Files ranked by dependency-graph and symbol relevance to this task (highest first):",
+    ]
+    if impact_ranked_files:
+        for row in impact_ranked_files:
+            reasons = ",".join(row.get("reasons", [])) or "n/a"
+            parts.append(f"- `{row['file']}` score={row['score']} reasons={reasons}")
+    else:
+        parts.append("- (no graph-based impact ranking available for this task)")
+    parts += [
         "",
         "## Repo Map",
         repo_map,
@@ -96,4 +114,4 @@ def build_context_pack(repo_root: Path, task: str, max_tokens: int = 3500, searc
     )
     conn.commit()
     conn.close()
-    return {"id": context_id, "task": task, "token_count": token_count, "content": content, "search_hits": hits}
+    return {"id": context_id, "task": task, "token_count": token_count, "content": content, "search_hits": hits, "impact_ranked_files": impact_ranked_files}

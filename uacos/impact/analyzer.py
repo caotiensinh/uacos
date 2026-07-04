@@ -5,6 +5,7 @@ import re
 from uacos.graph.builder import load_graph
 from uacos.graph.query import related_files, query_symbol
 from uacos.search import search_repo
+from uacos.security.diff_parser import parse_unified_diff
 
 GENERIC_TASK_TOKENS = {"uacos", "module", "modules", "add", "fix", "update", "write", "handle", "type", "hints", "hint", "test", "docs", "class", "bug", "query", "endpoint"}
 
@@ -87,3 +88,27 @@ def smart_context(repo_root: Path, task: str, max_files: int = 8, max_chars: int
     out = out_dir / "latest_smart_context.md"
     out.write_text(content, encoding="utf-8")
     return {"status": "ok", "task": task, "included_files": included, "impact": impact, "context_file": str(out), "content": content, "char_count": len(content)}
+
+def impact_alignment_check(repo_root: Path, task: str, patch_file: Path, min_score: float = 0.15, limit: int = 50) -> dict:
+    """Compare a patch's changed files against this task's dependency-graph impact ranking.
+
+    This is a heuristic signal, not a hard safety boundary (unlike patch_gate's
+    scope allowlist): impact ranking can miss legitimate files (new files,
+    config, docs, tests) that a correct fix still needs to touch. Findings are
+    informational — callers decide whether to warn or block.
+    """
+    text = patch_file.read_text(encoding="utf-8", errors="replace")
+    changed = [p.path for p in parse_unified_diff(text)]
+    impact = impact_by_task(repo_root, task, limit=limit)
+    ranked = {row["file"]: row["score"] for row in impact["impacted_files"]}
+    aligned = [f for f in changed if ranked.get(f, 0) >= min_score]
+    unranked = [f for f in changed if ranked.get(f, 0) < min_score]
+    status = "warn" if unranked else "pass"
+    return {
+        "status": status,
+        "task": task,
+        "changed_files": changed,
+        "aligned_files": aligned,
+        "unranked_files": unranked,
+        "impacted_files": impact["impacted_files"],
+    }
