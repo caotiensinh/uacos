@@ -78,15 +78,31 @@ def autopilot_plan(repo_root: Path, title: str, objective: str, allowed_files=No
 
     allowed_files_source = "user"
     effective_allowed_files = allowed_files or []
+    scope_warning = None
     if not effective_allowed_files:
         ranked = context.get("impact_ranked_files", [])
         suggested = [row["file"] for row in ranked if row.get("score", 0) >= IMPACT_SCOPE_MIN_SCORE][:IMPACT_SCOPE_MAX_FILES]
         if suggested:
             effective_allowed_files = suggested
             allowed_files_source = "impact_analysis_auto_suggested"
+        elif not (allowed_dirs or []):
+            # No user-supplied scope AND impact analysis found nothing (e.g. the
+            # objective shares no vocabulary with any symbol/file name). Without
+            # this flag, patch_gate.validate_patch_text() treats an empty
+            # allowed_files + allowed_dirs as "no_scope_restriction" — i.e. the
+            # patch is allowed to touch ANY file. That's the opposite of
+            # "fix the right place", so surface it loudly instead of silently
+            # producing an unrestricted-scope task.
+            allowed_files_source = "none_determined_scope_open"
+            scope_warning = (
+                "No allowed_files/allowed_dirs given and impact analysis found no "
+                "matching files for this objective — the task has UNRESTRICTED "
+                "file scope. Pass --allowed-file/--allowed-dir explicitly, or "
+                "reword the objective to reference actual file/symbol names."
+            )
 
     task_file = create_task(repo_root, title=title, objective=objective, allowed_files=effective_allowed_files, allowed_dirs=allowed_dirs or [], tests=tests or [], commands=commands or [], risk_level=risk_level)
-    return {
+    result = {
         "status": "ok",
         "task_file": str(task_file),
         "title": title,
@@ -98,6 +114,9 @@ def autopilot_plan(repo_root: Path, title: str, objective: str, allowed_files=No
         "gates": ["semantic_index", "context_pack", "adapter", "artifact_ingest", "regression_check", "apply_patch", "done_gate", "auto_learning"],
         "created_at": utcnow(),
     }
+    if scope_warning:
+        result["scope_warning"] = scope_warning
+    return result
 
 def _safe_step(run: dict, name: str, fn):
     try:
