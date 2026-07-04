@@ -105,15 +105,20 @@ def fullstack_impact(repo_root: Path, task: str, limit: int = 12) -> dict:
     tokens = [t for t in re.findall(r"[A-Za-z0-9_/-]+", low) if len(t) >= 3]
     for d in index["javascript"]["files"]:
         fscore = 0.0
+        matched_reasons = []
         for t in tokens:
             if t in d["path"].lower():
                 fscore += 0.4
+                matched_reasons.append(f"js_path_match:{t}")
             if any(t in (fn.get("name", "").lower()) for fn in d.get("functions", [])):
                 fscore += 0.5
+                matched_reasons.append(f"js_function_name:{t}")
             if any(t in c.get("endpoint", "").lower() for c in d.get("api_calls", [])):
                 fscore += 0.9
+                matched_reasons.append(f"js_api_endpoint:{t}")
         if fscore:
-            add(d["path"], fscore, "js_keyword_api")
+            for reason in matched_reasons:
+                add(d["path"], fscore, reason)
     # Cross-link backend impact -> frontend files
     for link in index.get("links", []):
         if link["backend_file"] in scores:

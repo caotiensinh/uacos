@@ -59,6 +59,21 @@ def test_js_ts_parser_and_fullstack_links(tmp_path: Path):
     assert "backend/api.py" in ctx["content"]
     assert "frontend/dashboard.js" in ctx["content"]
 
+def test_fullstack_impact_reasons_are_specific_not_generic(tmp_path: Path):
+    # Regression test: every JS/TS match used to be labeled with the same
+    # generic "js_keyword_api" reason regardless of whether it matched on
+    # file path, function name, or API endpoint — e.g. a pure function-name
+    # match was mislabeled "js_keyword_api" even though the task text never
+    # mentioned an API at all. Reasons must now say specifically what matched.
+    repo = tmp_path / "repo"
+    make_repo(repo)
+    bootstrap(repo)
+    impact = fullstack_impact(repo, "fix loadUsers bug")
+    dash = next(x for x in impact["impacted_files"] if x["file"] == "frontend/dashboard.js")
+    assert not any(r == "js_keyword_api" for r in dash["reasons"])
+    assert any(r.startswith("js_function_name:") for r in dash["reasons"])
+
+
 def test_compression_summarizes_js_ts(tmp_path: Path):
     repo = tmp_path / "repo"
     make_repo(repo)
