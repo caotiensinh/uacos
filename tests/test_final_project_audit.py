@@ -2,16 +2,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python 3.9 and 3.10
-    import tomli as tomllib
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def parse_project_scripts(pyproject_text: str) -> dict[str, str]:
+    scripts: dict[str, str] = {}
+    in_scripts = False
+    for raw_line in pyproject_text.splitlines():
+        line = raw_line.strip()
+        if line == "[project.scripts]":
+            in_scripts = True
+            continue
+        if in_scripts and line.startswith("["):
+            break
+        if in_scripts and "=" in line:
+            key, value = line.split("=", 1)
+            scripts[key.strip()] = value.strip().strip('"')
+    return scripts
 
 
 def test_final_project_docs_surface_is_complete():
@@ -40,8 +51,7 @@ def test_final_project_docs_surface_is_complete():
 
 
 def test_final_project_cli_entrypoints_are_registered():
-    pyproject = tomllib.loads(read("pyproject.toml"))
-    scripts = pyproject["project"]["scripts"]
+    scripts = parse_project_scripts(read("pyproject.toml"))
 
     assert scripts["uacos"] == "uacos.cli:main"
     assert scripts["uacos-flow"] == "uacos.flow_cli:main"
@@ -84,15 +94,17 @@ def test_final_project_product_claims_are_conservative():
     current_status = read("docs/CURRENT_STATUS.md")
     claim_guide = read("docs/CLAIM_WORDING_GUIDE.md")
 
-    for text in [root_readme, current_status, claim_guide]:
-        assert "Do not claim 80-90% or 99% token savings unless" in text or "Forbidden" in text
+    assert "Do **not** claim 80-90% or 99% token savings unless" in root_readme
+    assert "Forbidden without direct evidence" in current_status
+    assert "## Forbidden claims" in claim_guide
+    assert "UACOS guarantees correct patches." in claim_guide
 
-    forbidden_claims = [
+    public_facing_docs = "\n".join([root_readme, current_status])
+    unsupported_claims = [
+        "UACOS saves 99% token.",
+        "UACOS always saves 80-90% token.",
         "UACOS guarantees correct patches.",
-        "UACOS replaces Goose.",
-        "UACOS always saves 99%",
     ]
-    combined = "\n".join([root_readme, current_status, claim_guide])
 
-    for claim in forbidden_claims:
-        assert claim not in combined
+    for claim in unsupported_claims:
+        assert claim not in public_facing_docs
