@@ -103,3 +103,45 @@ def setup_project(repo_root: Path, *, refresh: bool = False, task: str = "prepar
         "claim": "Setup prepares local metadata only. It does not prove the project is production-ready and does not apply code changes.",
         "created_at": utcnow(),
     }
+
+
+def _artifact_status(path: Path) -> dict:
+    return {"path": str(path), "exists": path.exists(), "size_bytes": path.stat().st_size if path.exists() and path.is_file() else 0}
+
+
+def terminal_status(repo_root: Path) -> dict:
+    """Compact terminal/dashboard-friendly summary for real users."""
+
+    udir = uacos_dir(repo_root)
+    doctor = actionable_doctor(repo_root)
+    artifacts = {
+        "graph": _artifact_status(udir / "graph" / "dependency_graph.json"),
+        "summary_cache": _artifact_status(udir / "compression" / "summary_cache.json"),
+        "auto_report": _artifact_status(repo_root / "reports" / "uacos_auto_report.json"),
+        "benchmark_report": _artifact_status(repo_root / "reports" / "uacos_benchmark_suite_report.json"),
+        "release_gate_report": _artifact_status(repo_root / "reports" / "release_gate_report.json"),
+        "latest_patch_lifecycle_report": _artifact_status(udir / "patch_lifecycle" / "latest_patch_lifecycle_report.json"),
+        "dashboard_script_bash": _artifact_status(udir / "scripts" / "run_uacos_dashboard.sh"),
+    }
+    missing_core = [name for name in ["graph", "summary_cache"] if not artifacts[name]["exists"]]
+    missing_evidence = [name for name in ["benchmark_report", "release_gate_report", "latest_patch_lifecycle_report"] if not artifacts[name]["exists"]]
+    status = "pass" if doctor.get("status") in {"pass", "warn"} and not missing_core else "fail"
+    return {
+        "status": status,
+        "mode": "status",
+        "repo": str(repo_root),
+        "doctor_status": doctor.get("status"),
+        "core_ready": not missing_core,
+        "missing_core_artifacts": missing_core,
+        "missing_evidence_artifacts": missing_evidence,
+        "artifacts": artifacts,
+        "next_step": "uacos-flow setup --repo . --refresh" if missing_core else "uacos-flow assist --repo . --task '<your task>'",
+        "recommended_workflow": [
+            "uacos-flow setup --repo . --task '<your task>'",
+            "uacos-flow assist --repo . --task '<your task>' --max-tokens 6000",
+            "uacos-flow guard --repo . --patch change.diff --allowed-file <path> --test 'pytest -q'",
+            "uacos-flow apply-safe --repo . --patch change.diff --allowed-file <path> --test 'pytest -q' --yes",
+        ],
+        "claim": "Status is a local readiness summary. Missing evidence artifacts are normal until those workflows are run.",
+        "created_at": utcnow(),
+    }
