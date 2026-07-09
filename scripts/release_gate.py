@@ -72,6 +72,24 @@ def _read_project_version(pyproject_text: str) -> str:
     raise ValueError("project.version not found in pyproject.toml")
 
 
+def clean_pycache() -> dict:
+    removed = []
+    for path in sorted(ROOT.rglob("__pycache__")):
+        if "reports/pycache_compile" in str(path):
+            continue
+        shutil.rmtree(path, ignore_errors=True)
+        removed.append(str(path.relative_to(ROOT)))
+    return {
+        "name": "clean_pycache",
+        "cmd": "remove __pycache__ before release cleanliness check",
+        "returncode": 0,
+        "ok": True,
+        "stdout_tail": "\n".join(removed[:50]),
+        "stderr_tail": "",
+        "json_status": "pass",
+    }
+
+
 def no_pycache_in_release() -> dict:
     found = [str(p.relative_to(ROOT)) for p in ROOT.rglob("__pycache__") if "reports/pycache_compile" not in str(p)]
     return {"name": "no_pycache_in_release", "cmd": "find __pycache__", "returncode": 0 if not found else 1, "ok": not found, "stdout_tail": "\n".join(found[:20]), "stderr_tail": "", "json_status": "pass" if not found else "fail"}
@@ -107,7 +125,9 @@ def main() -> int:
     compile_cache = ROOT / "reports" / "pycache_compile"
     if compile_cache.exists():
         shutil.rmtree(compile_cache, ignore_errors=True)
-    checks = [run("compileall", [sys.executable, "-m", "compileall", "-q", "uacos"], env_extra={"PYTHONPYCACHEPREFIX": str(compile_cache)})]
+    checks = [clean_pycache()]
+    checks.append(run("compileall", [sys.executable, "-m", "compileall", "-q", "uacos"], env_extra={"PYTHONPYCACHEPREFIX": str(compile_cache)}))
+    checks.append(clean_pycache())
     checks.append(no_pycache_in_release())
     checks.append(install_smoke_test())
     checks.append(version_sync())
