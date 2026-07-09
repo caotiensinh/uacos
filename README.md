@@ -8,7 +8,7 @@ UACOS is a local-first code intelligence, context-compression, orchestration, an
 
 UACOS is **not a Goose clone or general chat agent**. Its product role is to act as the repo brain, agent-code coordination layer, and safety gate underneath AI coding agents such as Goose, Claude Code, Codex, OpenClaw, Aider, Cline, or manual chat workflows.
 
-See [Strategic Status](docs/STRATEGIC_STATUS.md) for the current goal alignment, Goose comparison, maturity estimate, and remaining production gaps.
+See [Strategic Status](docs/STRATEGIC_STATUS.md) for the current goal alignment, Goose comparison, maturity estimate, and remaining production gaps. See [Production Improvement Checklist](docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md) for the finite upgrade plan.
 
 ## Requirements
 
@@ -87,6 +87,7 @@ The suite records token estimates, savings percent, context quality signals, and
 
 ## Links
 
+- [Production Improvement Checklist](docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md)
 - [Strategic Status](docs/STRATEGIC_STATUS.md)
 - [Product Workflows](docs/PRODUCT_WORKFLOWS.md)
 - [User Guide](docs/USER_GUIDE.md)
