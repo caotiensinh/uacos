@@ -150,16 +150,9 @@ Goal: make UACOS easier for real users.
 
 - [x] A new developer can install, prepare a repo, generate context, validate a patch, and read evidence without studying the full command surface.
 
-### Current implementation status
+### Evidence
 
-- `uacos.onboarding.setup_project` adds one-command local setup for bootstrap, graph, summary cache, run scripts, and doctor.
-- `uacos.onboarding.actionable_doctor` returns failed checks, warnings, recommended commands, and a concrete next step.
-- `uacos.onboarding.terminal_status` returns a compact terminal/dashboard-friendly readiness and evidence summary.
-- `uacos-flow setup`, `uacos-flow doctor`, and `uacos-flow status` expose these flows.
-- `docs/ONBOARDING.md` documents setup, doctor, and status.
-- `docs/WORKFLOW_RECIPES.md` documents common safe workflows.
-- `examples/reports/uacos_flow_status_example.json` provides an example status report.
-- This completes the Phase 6 functional scope, but CI evidence is still required before calling Phase 6 cleanly complete.
+- CI run `29024138897` passed compile, tests, self check, and release gate on Python 3.9, 3.11, and 3.13.
 
 ## Phase 7 — Product proof package
 
@@ -167,17 +160,33 @@ Goal: prepare credible public or customer-facing proof.
 
 ### Required items
 
-- [ ] Add public-safe benchmark report template.
-- [ ] Add case study format.
-- [ ] Add comparison matrix versus using agents directly.
-- [ ] Add claim wording guide:
+- [x] Add public-safe benchmark report template.
+- [x] Add case study format.
+- [x] Add comparison matrix versus using agents directly.
+- [x] Add claim wording guide:
   - safe claim
   - benchmarked claim
   - forbidden claim
 
 ### Done means
 
-- UACOS can be presented without overclaiming and without hiding limitations.
+- [x] UACOS can be presented without overclaiming and without hiding limitations.
+
+### Current implementation status
+
+- `docs/CLAIM_WORDING_GUIDE.md` defines safe, benchmarked, and forbidden claims.
+- `docs/PUBLIC_BENCHMARK_REPORT_TEMPLATE.md` defines the evidence required before publishing benchmark claims.
+- `docs/CASE_STUDY_TEMPLATE.md` defines a conservative case-study format.
+- `docs/AGENT_COMPARISON_MATRIX.md` positions UACOS as a repo brain/safety layer, not an agent replacement.
+- This completes the Phase 7 functional scope, but CI evidence is still required before calling Phase 7 cleanly complete.
+
+## Remaining evidence gaps
+
+These are outside the seven implementation phases and still matter before public/commercial claims:
+
+- Run the multi-repo benchmark against mounted real repos and archive the generated report.
+- Verify the same MCP flow with a real Goose or MCP-capable client.
+- Add real failed-task examples and retry counts from actual agent runs.
 
 ## Target claim policy
 
