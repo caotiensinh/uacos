@@ -68,14 +68,22 @@ Goal: prove UACOS works with real AI coding agents instead of only internal CLI 
 
 ### Required items
 
-- [ ] Add a Goose/MCP integration test plan.
-- [ ] Verify UACOS can provide context through MCP to an external client.
-- [ ] Verify patch submission can be routed through Guard Mode.
-- [ ] Verify loop decision flow with at least one real client or documented mock client.
+- [x] Add a Goose/MCP integration test plan.
+- [x] Verify UACOS can provide context through MCP to an external client using a mock client.
+- [x] Verify patch submission can be routed through Guard Mode validation using a mock client.
+- [x] Verify loop decision flow with a documented mock client.
+- [ ] Verify the same flow with a real Goose or MCP-capable client.
+- [ ] Archive real-client evidence: context request, patch validation, tests/release gate, and loop decision.
 
 ### Done means
 
-- A developer can follow one documented flow: Goose asks UACOS for context, produces patch, UACOS validates, tests run, report is recorded.
+- [ ] A developer can follow one documented flow with a real client: Goose asks UACOS for context, produces patch, UACOS validates, tests run, report is recorded.
+
+### Current implementation status
+
+- `docs/EXTERNAL_AGENT_INTEGRATION.md` documents the integration boundary and mock flow.
+- `tests/test_external_agent_mcp_flow.py` starts a localhost MCP server and simulates an external agent calling `list_tools`, `get_context`, `plan_orchestration_loop`, `ingest_patch(apply=false)`, and `loop_decision`.
+- This proves the local MCP contract shape, but does not yet prove Goose UI/CLI integration.
 
 ## Phase 4 — Patch lifecycle hardening
 
