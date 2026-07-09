@@ -33,7 +33,7 @@ def workflow_reference() -> dict:
             },
             {
                 "name": "assist",
-                "intent": "Create bounded task context, explain selected files, surface route/API relationships, suggest tests, and flag config/deployment risk for an external AI agent.",
+                "intent": "Create bounded task context, explain selected files/symbols, surface route/API relationships, suggest tests, and flag config/deployment risk for an external AI agent.",
                 "equivalent_commands": [
                     "uacos impact --repo . --task '<task>'",
                     "uacos context-compressed --repo . --task '<task>' --max-tokens 6000",
@@ -109,11 +109,13 @@ def run_assist(repo_root: Path, task: str, max_tokens: int = 6000, max_files: in
     from uacos.impact.api_graph import build_api_graph
     from uacos.impact.test_map import suggest_tests_for_selected_files
     from uacos.impact.config_risk import build_config_risk_map
+    from uacos.impact.symbol_context import build_symbol_context
 
     impact = impact_by_task(repo_root, task)
     context = compressed_context(repo_root, task, max_tokens=max_tokens, max_files=max_files)
     selected_files = context.get("selected_files", [])
     explanations = explain_selected_files(repo_root, task, selected_files, impact=impact)
+    symbol_context = build_symbol_context(repo_root, task=task, selected_files=selected_files)
     api_graph = build_api_graph(repo_root, task=task, selected_files=selected_files)
     test_map = suggest_tests_for_selected_files(repo_root, selected_files)
     config_risk = build_config_risk_map(repo_root, selected_files=selected_files)
@@ -128,10 +130,11 @@ def run_assist(repo_root: Path, task: str, max_tokens: int = 6000, max_files: in
         "impact": impact,
         "context": context,
         "selection_explanations": explanations,
+        "symbol_context": symbol_context,
         "api_graph": api_graph,
         "test_map": test_map,
         "config_risk": config_risk,
-        "next_step": "review selection_explanations, api_graph, test_map, and config_risk; then give the context to your AI agent and validate its patch with uacos-flow guard/apply-safe",
+        "next_step": "review selection_explanations, symbol_context, api_graph, test_map, and config_risk; then give the context to your AI agent and validate its patch with uacos-flow guard/apply-safe",
     }
 
 
