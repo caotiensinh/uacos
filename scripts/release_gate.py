@@ -31,7 +31,7 @@ def run(name: str, cmd: list[str], timeout: int = 60, env_extra: dict | None = N
             "started_at": started,
             "returncode": cp.returncode,
             "ok": cp.returncode == 0,
-            "stdout_tail": cp.stdout[-4000:],
+            "stdout_tail": cp.stdout[-12000:],
             "stderr_tail": cp.stderr[-4000:],
             "json_status": _json_status(cp.stdout),
         }
@@ -42,7 +42,7 @@ def run(name: str, cmd: list[str], timeout: int = 60, env_extra: dict | None = N
             "started_at": started,
             "returncode": 124,
             "ok": False,
-            "stdout_tail": (exc.stdout or "")[-4000:] if isinstance(exc.stdout, str) else "",
+            "stdout_tail": (exc.stdout or "")[-12000:] if isinstance(exc.stdout, str) else "",
             "stderr_tail": (exc.stderr or "")[-4000:] if isinstance(exc.stderr, str) else "timeout",
             "json_status": None,
         }
@@ -143,7 +143,7 @@ def main() -> int:
             "stderr_tail": "",
             "json_status": None,
         })
-    checks.append(run("english_language_check", [sys.executable, "scripts/check_english_docs.py", "--repo", ".", "--summary"], timeout=60))
+    checks.append(run("english_language_check", [sys.executable, "scripts/check_english_docs.py", "--repo", "."], timeout=60))
     checks.append(run("uacos_self_check", [sys.executable, "scripts/uacos_self_check.py", "--summary"], timeout=180))
     checks.append(run("community_readiness_check", [sys.executable, "scripts/community_readiness_check.py"], timeout=60))
     checks.append(run("uacos_auto_check", [sys.executable, "-m", "uacos.cli", "auto", "--repo", ".", "--skip-performance", "--summary"], timeout=120))
