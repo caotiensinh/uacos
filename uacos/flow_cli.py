@@ -41,7 +41,7 @@ def workflow_reference() -> dict:
             },
             {
                 "name": "guard",
-                "intent": "Validate patch scope and task alignment before applying changes elsewhere.",
+                "intent": "Validate patch scope, task alignment, and risk before applying changes elsewhere.",
                 "equivalent_commands": [
                     "uacos patch-check --repo . --patch change.diff --allowed-file path/to/file.py",
                     "uacos impact-alignment-check --repo . --task '<task>' --patch change.diff",
@@ -114,26 +114,30 @@ def run_assist(repo_root: Path, task: str, max_tokens: int = 6000, max_files: in
     }
 
 
-def run_guard(repo_root: Path, patch: str, task: str | None = None, allowed_files: list[str] | None = None, allowed_dirs: list[str] | None = None) -> dict:
+def run_guard(repo_root: Path, patch: str, task: str | None = None, allowed_files: list[str] | None = None, allowed_dirs: list[str] | None = None, tests: list[str] | None = None) -> dict:
     from uacos.security.patch_gate import validate_patch_file
+    from uacos.security.patch_review import review_patch_file
     from uacos.impact.analyzer import impact_alignment_check
 
     patch_path = Path(patch).resolve()
     validation = validate_patch_file(patch_path, allowed_files=allowed_files or [], allowed_dirs=allowed_dirs or [])
+    risk_review = review_patch_file(patch_path, allowed_files=allowed_files or [], allowed_dirs=allowed_dirs or [], tests=tests or [])
     alignment = None
     if task:
         alignment = impact_alignment_check(repo_root, task, patch_path)
     validation_ok = isinstance(validation, dict) and validation.get("status") in {"ok", "pass", "warn"}
+    review_ok = isinstance(risk_review, dict) and risk_review.get("status") in {"ok", "pass", "warn"}
     alignment_ok = alignment is None or (isinstance(alignment, dict) and alignment.get("status") in {"ok", "pass", "warn"})
     return {
-        "status": "pass" if validation_ok and alignment_ok else "fail",
+        "status": "pass" if validation_ok and review_ok and alignment_ok else "fail",
         "mode": "guard",
         "repo": str(repo_root),
         "patch": str(patch_path),
         "validation": validation,
+        "risk_review": risk_review,
         "impact_alignment": alignment,
         "writes_code": False,
-        "next_step": "only apply through guarded transaction/autopilot commands after validation, explicit scope, tests, and confirmation",
+        "next_step": "only apply through guarded transaction/autopilot commands after validation, explicit scope, tests, risk review, and confirmation",
     }
 
 
@@ -179,7 +183,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--task", default=None)
     p.add_argument("--allowed-file", action="append")
     p.add_argument("--allowed-dir", action="append")
-    p.set_defaults(handler=lambda args: run_guard(resolve_repo(args.repo), args.patch, task=args.task, allowed_files=args.allowed_file, allowed_dirs=args.allowed_dir))
+    p.add_argument("--test", action="append")
+    p.set_defaults(handler=lambda args: run_guard(resolve_repo(args.repo), args.patch, task=args.task, allowed_files=args.allowed_file, allowed_dirs=args.allowed_dir, tests=args.test))
 
     p = sub.add_parser("orchestrate", help="Create a finite spec-driven loop plan.")
     p.add_argument("--spec", required=True)
