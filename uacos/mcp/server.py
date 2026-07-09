@@ -18,20 +18,26 @@ from uacos.patching.engine import validate_patch
 from uacos.transaction.engine import run_transaction
 from uacos.runtime.agent_runtime import init_runtime, create_job, run_job_once, runtime_status, list_jobs
 from uacos.ops.packaging import bootstrap, health_check
+from uacos.product.workflows import get_product_contract
+
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
+
 
 def mcp_dir(repo_root: Path) -> Path:
     p = uacos_dir(repo_root) / "mcp"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
+
 def latest_config_path(repo_root: Path) -> Path:
     return mcp_dir(repo_root) / "mcp_server_config.json"
 
+
 def latest_report_path(repo_root: Path) -> Path:
     return mcp_dir(repo_root) / "latest_mcp_report.json"
+
 
 def tool_specs() -> list[dict]:
     return [
@@ -97,6 +103,14 @@ def tool_specs() -> list[dict]:
             }
         },
         {
+            "name": "product_contract",
+            "description": "Return UACOS product positioning, simplified workflows, MCP contract, and finite upgrade plan.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"section": {"type": "string"}}
+            }
+        },
+        {
             "name": "status",
             "description": "Return UACOS repo/runtime status.",
             "input_schema": {"type": "object", "properties": {}}
@@ -108,11 +122,14 @@ def tool_specs() -> list[dict]:
         }
     ]
 
+
 def call_tool(repo_root: Path, name: str, args: dict | None = None) -> dict:
     args = args or {}
     bootstrap(repo_root)
     if name == "list_tools":
         return {"status": "ok", "tools": tool_specs()}
+    if name == "product_contract":
+        return get_product_contract(args.get("section"))
     if name == "get_context":
         task = args["task"]
         result = compressed_context(repo_root, task, max_tokens=int(args.get("max_tokens", 6000)), max_files=int(args.get("max_files", 8)))
@@ -144,6 +161,7 @@ def call_tool(repo_root: Path, name: str, args: dict | None = None) -> dict:
         init_runtime(repo_root)
         return {"status": "ok", "health": health_check(repo_root), "runtime": runtime_status(repo_root), "jobs": list_jobs(repo_root)}
     raise ValueError(f"unknown_tool:{name}")
+
 
 def _json_response(handler, code: int, data: dict):
     body = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
@@ -243,8 +261,10 @@ class UacosMcpHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         return
 
+
 class ReusableTCPServer(socketserver.TCPServer):
     allow_reuse_address = True
+
 
 def serve_mcp(repo_root: Path, host: str = "127.0.0.1", port: int = 8769):
     if host not in {"127.0.0.1", "localhost"}:
@@ -256,6 +276,7 @@ def serve_mcp(repo_root: Path, host: str = "127.0.0.1", port: int = 8769):
         print(json.dumps(config, ensure_ascii=False, indent=2))
         httpd.serve_forever()
 
+
 def start_test_server(repo_root: Path, host: str = "127.0.0.1", port: int = 0):
     handler = type("RepoMcpHandler", (UacosMcpHandler,), {"repo_root": repo_root})
     server = ReusableTCPServer((host, port), handler)
@@ -263,17 +284,20 @@ def start_test_server(repo_root: Path, host: str = "127.0.0.1", port: int = 0):
     thread.start()
     return server
 
+
 def http_call(base_url: str, tool: str, args: dict | None = None) -> dict:
     data = json.dumps({"tool": tool, "arguments": args or {}, "id": "test"}).encode("utf-8")
     req = urllib.request.Request(base_url.rstrip("/") + "/call", data=data, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
+
 def jsonrpc_call(base_url: str, name: str, args: dict | None = None) -> dict:
     data = json.dumps({"jsonrpc": "2.0", "id": "1", "method": "tools/call", "params": {"name": name, "arguments": args or {}}}).encode("utf-8")
     req = urllib.request.Request(base_url.rstrip("/") + "/jsonrpc", data=data, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read().decode("utf-8"))
+
 
 def mcp_self_test(repo_root: Path) -> dict:
     bootstrap(repo_root)
@@ -284,6 +308,7 @@ def mcp_self_test(repo_root: Path) -> dict:
     base = f"http://127.0.0.1:{port}"
     try:
         tools = http_call(base, "list_tools")
+        contract = http_call(base, "product_contract")
         ctx = http_call(base, "get_context", {"task": "fix app value", "max_tokens": 3000, "max_files": 4})
         diff = "diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n@@ -1,2 +1,2 @@\n def value():\n-    return 1\n+    return 42\n"
         val = http_call(base, "ingest_patch", {"diff": diff, "allowed_files": ["app.py"], "apply": False})
@@ -291,12 +316,14 @@ def mcp_self_test(repo_root: Path) -> dict:
         status = http_call(base, "status")
         ok = (
             tools.get("result", {}).get("status") == "ok"
+            and contract.get("result", {}).get("status") == "ok"
+            and any(t.get("name") == "product_contract" for t in tools.get("result", {}).get("tools", []))
             and ctx.get("result", {}).get("status") == "ok"
             and val.get("result", {}).get("status") == "validated"
             and apply.get("result", {}).get("status") == "applied"
             and "return 42" in (repo_root / "app.py").read_text(encoding="utf-8")
         )
-        report = {"status": "pass" if ok else "fail", "port": port, "tools_count": len(tools.get("result", {}).get("tools", [])), "context_status": ctx.get("result", {}).get("status"), "validate_status": val.get("result", {}).get("status"), "apply_status": apply.get("result", {}).get("status"), "runtime_status": status.get("result", {}).get("runtime", {})}
+        report = {"status": "pass" if ok else "fail", "port": port, "tools_count": len(tools.get("result", {}).get("tools", [])), "product_contract_status": contract.get("result", {}).get("status"), "context_status": ctx.get("result", {}).get("status"), "validate_status": val.get("result", {}).get("status"), "apply_status": apply.get("result", {}).get("status"), "runtime_status": status.get("result", {}).get("runtime", {})}
         latest_report_path(repo_root).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         return report
     finally:
