@@ -37,6 +37,21 @@ $ python -m uacos.cli auto --repo . --summary
 }
 ```
 
+## Simplified Workflow CLI
+
+Use `uacos-flow` when you do not want to remember the lower-level command surface:
+
+```bash
+uacos-flow list
+uacos-flow prepare --repo . --summary
+uacos-flow assist --repo . --task "fix MCP docs" --max-tokens 6000
+uacos-flow guard --repo . --patch change.diff --task "fix MCP docs" --allowed-file docs/PRODUCT_WORKFLOWS.md
+uacos-flow orchestrate --spec "upgrade safely until tests pass" --agent goose --test "pytest -q" --max-iterations 3
+uacos-flow benchmark --repo . --manifest evals/benchmark_suite.json
+```
+
+`uacos-flow` is only a wrapper. Existing `uacos ...` commands remain available and backward compatible.
+
 ## Product Workflows
 
 UACOS has four supported product workflows:
@@ -65,6 +80,7 @@ The suite records token estimates, savings percent, context quality signals, and
 - `reports/uacos_auto_report.json` for Auto Mode summary
 - `reports/release_gate_report.json` for release readiness checks
 - `uacos/` package and CLI entrypoint installed via `uacos`
+- `uacos-flow` simplified product workflow command
 - `docs/` and `CHANGELOG.md` for published project onboarding
 
 ## Links
