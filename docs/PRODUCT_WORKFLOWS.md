@@ -2,20 +2,23 @@
 
 UACOS is not a Goose clone and should not drift into a general-purpose chat agent. Its product role is narrower and more valuable:
 
-> UACOS is the local-first repo brain, context compressor, and patch safety gate for AI coding agents.
+> UACOS is the local-first repo brain, prompt/context optimizer, agent-code coordinator, and patch safety gate for AI coding workflows.
 
-UACOS should integrate with agents such as Goose, Claude Code, Codex, OpenClaw, Aider, Cline, and manual chat workflows. It should make those agents cheaper and safer by preparing the right project context and guarding patch application.
+UACOS should integrate with agents such as Goose, Claude Code, Codex, OpenClaw, Aider, Cline, and manual chat workflows. It should make those agents cheaper and safer by preparing the right project context, coordinating bounded code workflows, and guarding patch application.
 
 ## Product boundary
 
 ### In scope
 
+- Token and prompt optimization.
 - Repo scanning and project memory.
 - Dependency and impact analysis before an AI edit.
 - Task-specific compressed context generation.
+- Coordination between external agents and codebase operations.
 - Patch scope validation.
 - Secret scanning on added lines.
 - Transaction checkpoint, test execution, and rollback.
+- Evidence recording after each iteration.
 - Local-only MCP access for external agents.
 - Repeatable token and release-gate reports.
 
@@ -25,9 +28,17 @@ UACOS should integrate with agents such as Goose, Claude Code, Codex, OpenClaw, 
 - Competing directly with Goose as a general-purpose agent runtime.
 - Cloud-first execution as the default path.
 - Unattended patch application without explicit opt-in, scope, tests, and rollback.
+- Unbounded autonomous loops.
 - Claiming 80-90% savings without benchmark evidence.
 
-## Three supported workflows
+## Four core pillars
+
+1. **Token and prompt optimization** — select relevant files, compress context, reuse memory/skills, and keep prompts bounded.
+2. **Safe code change and upgrade** — validate scope, scan secrets, checkpoint files, run tests, and roll back failed changes.
+3. **Agent-code coordination layer** — coordinate external agents and codebase operations without becoming a general-purpose agent itself.
+4. **Spec-driven DevOps loop** — repeat `plan -> code -> test -> record -> improve` only within explicit bounds until the user spec passes or the loop is exhausted.
+
+## Four supported workflows
 
 ### 1. Prepare Mode
 
@@ -74,26 +85,64 @@ Purpose: validate scope, check task alignment, scan for secrets, checkpoint affe
 
 Guard Mode can edit code only through explicit opt-in and must keep release-gate evidence.
 
+### 4. Orchestrate Mode
+
+Use this when an external agent or user wants a bounded DevOps-style loop:
+
+```text
+MCP tool: orchestration_contract
+MCP tool: plan_orchestration_loop
+MCP tool: loop_decision
+```
+
+Purpose: coordinate the loop `spec -> context -> delegate -> validate patch -> apply/test -> record -> stop or improve`.
+
+Orchestrate Mode does not execute agents, apply patches, or claim success by itself. It only plans and decides the safe next step. Code changes still flow through Guard Mode.
+
+## Bounded loop rule
+
+UACOS may coordinate repeated improvement, but it must never loop forever.
+
+Every orchestration loop must have:
+
+- `spec`
+- `max_iterations`
+- tests or explicit validation evidence
+- per-iteration record
+- stop condition
+
+The allowed stop conditions are:
+
+- `acceptance_criteria_passed`
+- `release_gate_passed_when_required`
+- `max_iterations_exhausted`
+- `scope_expansion_required`
+- `unsafe_patch_blocked`
+- `human_decision_required`
+
+If the loop exhausts `max_iterations`, UACOS must stop and return a gap report instead of silently continuing.
+
 ## Finite upgrade plan
 
 The current priority upgrade is limited to four sessions:
 
-1. **Positioning and workflow contract** — publish product boundary, three workflows, MCP product contract, and finite plan.
-2. **MCP compatibility hardening** — validate HTTP/JSON-RPC tool behavior and keep MCP localhost-only by default.
+1. **Positioning and workflow contract** — publish product boundary, workflows, MCP product contract, and finite plan.
+2. **MCP orchestration contract hardening** — publish core pillars, bounded loop contract, and MCP request/response tests.
 3. **Benchmark suite for real repos** — measure file selection, raw tokens, compressed tokens, savings, and task success signals.
-4. **Product command simplification** — group user-facing usage around prepare/assist/guard while preserving existing commands.
+4. **Product command simplification** — group user-facing usage around prepare/assist/guard/orchestrate while preserving existing commands.
 
 No open-ended development loop is allowed. A session is not complete until its scope, impact, tests, and remaining work are reported.
 
-## MCP product contract
+## MCP product and orchestration contracts
 
 The MCP server exposes:
 
 ```text
 product_contract
+orchestration_contract
+plan_orchestration_loop
+loop_decision
 ```
-
-This lets external agents inspect UACOS positioning, workflows, MCP tool contract, and the finite four-session plan before deciding how to use UACOS.
 
 Example JSON-RPC call:
 
@@ -103,8 +152,13 @@ Example JSON-RPC call:
   "id": "1",
   "method": "tools/call",
   "params": {
-    "name": "product_contract",
-    "arguments": {"section": "workflow_modes"}
+    "name": "plan_orchestration_loop",
+    "arguments": {
+      "spec": "upgrade login safely until tests pass",
+      "agents": ["goose", "codex"],
+      "tests": ["pytest -q"],
+      "max_iterations": 3
+    }
   }
 }
 ```
