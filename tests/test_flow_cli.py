@@ -7,7 +7,7 @@ def test_workflow_reference_lists_product_modes():
 
     assert ref["status"] == "ok"
     assert ref["command"] == "uacos-flow"
-    assert names == ["prepare", "assist", "guard", "orchestrate", "benchmark"]
+    assert names == ["prepare", "assist", "guard", "apply-safe", "orchestrate", "benchmark"]
     assert "Existing uacos commands are preserved" in ref["backward_compatibility"]
 
 
@@ -27,6 +27,26 @@ def test_flow_parser_accepts_assist_mode():
     assert args.task == "fix mcp docs"
     assert args.max_tokens == 3000
     assert args.max_files == 4
+
+
+def test_flow_parser_accepts_apply_safe_mode():
+    parser = build_parser()
+    args = parser.parse_args([
+        "apply-safe",
+        "--patch",
+        "change.diff",
+        "--allowed-file",
+        "app.py",
+        "--test",
+        "pytest -q",
+        "--yes",
+    ])
+
+    assert args.mode == "apply-safe"
+    assert args.patch == "change.diff"
+    assert args.allowed_file == ["app.py"]
+    assert args.test == ["pytest -q"]
+    assert args.yes is True
 
 
 def test_orchestrate_mode_creates_finite_plan():
