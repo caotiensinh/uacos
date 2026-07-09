@@ -34,6 +34,7 @@ dev = ["pytest>=7", "build>=1.0"]
 
 [project.scripts]
 uacos = "uacos.cli:main"
+uacos-flow = "uacos.flow_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/caotiensinh/uacos"
