@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from uacos.orchestrator.contract import get_orchestration_contract
+
 PRODUCT_POSITIONING = {
     "name": "UACOS",
-    "category": "repo_brain_and_safety_gate",
-    "one_liner": "Local-first repo intelligence, context compression, and patch safety for AI coding agents.",
+    "category": "repo_brain_orchestration_and_safety_gate",
+    "one_liner": "Local-first repo intelligence, prompt/context optimizer, agent-code coordinator, and patch safety gate for AI coding workflows.",
     "is_not": [
         "a Goose clone",
         "a general-purpose chat agent",
         "a cloud-first coding assistant",
         "an unattended patch applier by default",
+        "an unbounded autonomous loop",
     ],
     "integrates_with": [
         "Goose",
@@ -22,12 +25,14 @@ PRODUCT_POSITIONING = {
         "manual chat workflows",
     ],
     "core_promise": [
-        "select fewer, more relevant files before an AI run",
-        "compress project context without hiding safety rules",
+        "save tokens by selecting fewer, more relevant files before an AI run",
+        "optimize prompts through bounded context, repo memory, and reusable skills",
+        "coordinate external agents and code operations without becoming a general chat agent",
         "validate patch scope before changes touch the working tree",
         "scan added lines for secrets",
         "checkpoint and roll back automatically when tests fail",
-        "measure token savings with repeatable local reports",
+        "record each iteration so the loop can improve with evidence",
+        "stop when the user spec is satisfied or the finite iteration budget is exhausted",
     ],
 }
 
@@ -66,6 +71,17 @@ WORKFLOW_MODES = [
             "python scripts/release_gate.py",
         ],
         "writes_code": True,
+        "release_gate_required": True,
+    },
+    {
+        "name": "orchestrate",
+        "purpose": "Coordinate a bounded DevOps-style loop across agents and code until the spec passes or the iteration budget is exhausted.",
+        "commands": [
+            "uacos mcp-serve --repo . --host 127.0.0.1 --port 8769",
+            "MCP tool: orchestration_contract",
+            "MCP tool: plan_orchestration_loop",
+        ],
+        "writes_code": "only_through_guard_mode",
         "release_gate_required": True,
     },
 ]
@@ -107,6 +123,18 @@ MCP_TOOL_CONTRACT = [
         "role": "Expose UACOS positioning, supported workflows, and finite improvement plan to agent clients.",
         "safe_by_default": True,
     },
+    {
+        "name": "orchestration_contract",
+        "priority": 7,
+        "role": "Expose UACOS core pillars and bounded DevOps loop rules for external agents.",
+        "safe_by_default": True,
+    },
+    {
+        "name": "plan_orchestration_loop",
+        "priority": 8,
+        "role": "Create a finite spec-driven loop plan; it does not execute agents or apply patches by itself.",
+        "safe_by_default": True,
+    },
 ]
 
 SESSION_PLAN = [
@@ -115,7 +143,7 @@ SESSION_PLAN = [
         "title": "Positioning and workflow contract",
         "scope": [
             "make UACOS explicitly a repo brain/safety gate, not a general agent clone",
-            "publish three product workflows: prepare, assist, guard",
+            "publish product workflows: prepare, assist, guard",
             "expose the workflow contract through MCP for external agents",
         ],
         "files_allowed": [
@@ -140,15 +168,16 @@ SESSION_PLAN = [
     },
     {
         "session": 2,
-        "title": "MCP compatibility hardening",
+        "title": "MCP orchestration contract hardening",
         "scope": [
             "validate JSON-RPC behavior against MCP-style clients",
-            "add stable tool aliases only if they do not break existing tools",
+            "publish core UACOS pillars: token/prompt optimization, safe code upgrade, agent-code coordination, and bounded spec-driven DevOps loop",
+            "add safe MCP tools for orchestration contract and finite loop planning",
             "add request/response contract tests",
         ],
-        "files_allowed": ["uacos/mcp/*", "tests/*", "docs/*"],
-        "out_of_scope": ["agent runtime rewrite", "network exposure beyond localhost"],
-        "evidence_required": ["HTTP call test", "JSON-RPC call test", "localhost-only safety test"],
+        "files_allowed": ["uacos/orchestrator/*", "uacos/mcp/*", "uacos/product/*", "tests/*", "docs/*"],
+        "out_of_scope": ["agent runtime rewrite", "network exposure beyond localhost", "unbounded autonomous loops", "automatic patch application without guard mode"],
+        "evidence_required": ["HTTP call test", "JSON-RPC call test", "localhost-only safety test", "finite-loop contract test"],
     },
     {
         "session": 3,
@@ -166,7 +195,7 @@ SESSION_PLAN = [
         "session": 4,
         "title": "Product command simplification",
         "scope": [
-            "group the many CLI commands into prepare/assist/guard documentation and optional wrapper commands",
+            "group the many CLI commands into prepare/assist/guard/orchestrate documentation and optional wrapper commands",
             "keep existing commands backward compatible",
             "make non-CLI onboarding shorter",
         ],
@@ -190,6 +219,7 @@ def get_product_contract(section=None):
         "status": "ok",
         "positioning": deepcopy(PRODUCT_POSITIONING),
         "workflow_modes": get_workflow_modes(),
+        "orchestration_contract": get_orchestration_contract(),
         "mcp_tool_contract": deepcopy(MCP_TOOL_CONTRACT),
         "finite_session_plan": get_session_plan(),
     }
