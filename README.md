@@ -90,6 +90,7 @@ The suite records token estimates, savings percent, context quality signals, and
 - [Production Improvement Checklist](docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md)
 - [Strategic Status](docs/STRATEGIC_STATUS.md)
 - [Product Workflows](docs/PRODUCT_WORKFLOWS.md)
+- [External Agent Integration](docs/EXTERNAL_AGENT_INTEGRATION.md)
 - [User Guide](docs/USER_GUIDE.md)
 - [Auto Mode](docs/AUTO_MODE.md)
 - [Autopilot Mode](docs/AUTOPILOT_MODE.md)
