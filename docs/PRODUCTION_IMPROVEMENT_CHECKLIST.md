@@ -106,14 +106,9 @@ Goal: make patch review/apply/report safer and easier.
 
 - [x] A patch can move through review -> guarded apply -> tests -> rollback/report without manual guessing.
 
-### Current implementation status
+### Evidence
 
-- `uacos.security.patch_review` adds patch risk classification around the existing patch gate.
-- `uacos-flow guard` returns `validation`, `risk_review`, and optional `impact_alignment` without applying code.
-- `uacos.security.patch_lifecycle.safe_apply_patch_file` wraps the existing transaction engine to checkpoint, apply, test, roll back on failure, and write latest evidence.
-- `uacos-flow apply-safe` exposes the safe apply path with `--yes`, required tests, and high-risk protection.
-- `docs/PATCH_LIFECYCLE.md` documents risk categories, safe apply, rollback, and the latest report path.
-- CI evidence is still required before calling this phase complete.
+- CI run `29007172964` passed compile, tests, self check, and release gate on Python 3.9, 3.11, and 3.13.
 
 ## Phase 5 — Context intelligence upgrade
 
@@ -125,11 +120,18 @@ Goal: improve file selection quality before chasing extreme token reduction.
 - [ ] Add route/API graph support for web apps.
 - [ ] Add test-to-source mapping.
 - [ ] Add config/deployment risk map.
-- [ ] Add selected-file quality metrics.
+- [x] Add selected-file quality metrics and explanations.
 
 ### Done means
 
-- UACOS can explain why each file was selected and how it relates to the task.
+- [x] UACOS can explain why each file was selected and how it relates to the task.
+- [ ] UACOS can explain routes, tests, symbols, and config/deployment risk with deeper graph support.
+
+### Current implementation status
+
+- `uacos.impact.explainer` adds heuristic selected-file explanations.
+- `uacos-flow assist` returns `selection_explanations` with confidence, roles, matched task terms, reasons, and token tradeoff.
+- This improves transparency, but does not yet provide deep symbol-level, route-level, test-to-source, or deployment-risk mapping.
 
 ## Phase 6 — Usability and onboarding
 
