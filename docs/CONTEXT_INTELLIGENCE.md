@@ -53,6 +53,26 @@ The graph includes:
 - route/API items related to the task
 - whether a route/API item is already in the selected context
 
+### Test-to-source mapping
+
+`uacos-flow assist` now returns `test_map`.
+
+The map currently detects likely tests through:
+
+- Python test names such as `test_service.py` for `service.py`.
+- Python imports/references from test files to source files.
+- JS/TS test names such as `client.test.ts`, `client.spec.ts`, and equivalent JS/JSX/TSX patterns.
+
+The map includes:
+
+- selected source files
+- likely test files
+- mapping confidence
+- reasons such as `name_match` and `import_or_reference_match`
+- recommended commands such as `python -m pytest -q tests/test_service.py` or `npm test -- client.test.ts`
+
+These commands are candidates for evidence. They are not proof until executed.
+
 ## Example
 
 ```bash
@@ -73,6 +93,11 @@ Expected output includes:
     "client_api_call_count": 2,
     "relevant_routes": [],
     "relevant_client_api_calls": []
+  },
+  "test_map": {
+    "status": "ok",
+    "mapped_source_count": 1,
+    "mappings": []
   }
 }
 ```
@@ -82,12 +107,12 @@ Expected output includes:
 - It does not prove runtime routing behavior.
 - It does not execute the app.
 - It does not guarantee every framework-specific route is detected.
-- It does not yet map tests to source files.
+- It does not guarantee every relevant test is detected.
 - It does not yet map deployment/config risk.
 
 ## Next upgrades
 
-- test-to-source mapping
 - config/deployment risk map
 - deeper symbol-level explanation
 - route/client matching across frontend and backend by normalized path
+- optional execution of recommended test commands through guarded evidence flow
