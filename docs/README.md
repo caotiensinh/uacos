@@ -47,6 +47,7 @@ Use these before publishing claims or customer-facing material.
 |---|---|
 | [Installation](INSTALLATION.md) | Installation details. |
 | [Security Model](SECURITY_MODEL.md) | Local-first security assumptions and patch safety rules. |
+| [Language Policy](LANGUAGE_POLICY.md) | English-only repository content policy and automated language gate. |
 | [MCP Server](MCP_SERVER.md) | MCP interface details, if present in the checked-out version. |
 
 ## Example artifacts
@@ -75,6 +76,12 @@ For product or investor review:
 4. [Claim Wording Guide](CLAIM_WORDING_GUIDE.md)
 5. [Public Benchmark Report Template](PUBLIC_BENCHMARK_REPORT_TEMPLATE.md)
 
+For repository maintainers:
+
+1. [Language Policy](LANGUAGE_POLICY.md)
+2. [Security Model](SECURITY_MODEL.md)
+3. [Production Improvement Checklist](PRODUCTION_IMPROVEMENT_CHECKLIST.md)
+
 For public claims:
 
 1. Run the benchmark and release gate.
@@ -87,5 +94,6 @@ For public claims:
 - Keep the root README short and product-oriented.
 - Put detailed docs in `docs/`.
 - Use this index as the main navigation page.
+- Keep repository documentation and user-facing text in English; see [Language Policy](LANGUAGE_POLICY.md).
 - Do not duplicate large explanations across many files; link to the source document instead.
 - Never claim production readiness or 99% token savings without benchmark evidence.
