@@ -33,7 +33,7 @@ def workflow_reference() -> dict:
             },
             {
                 "name": "assist",
-                "intent": "Create bounded task context, explain selected files, and surface route/API relationships for an external AI agent.",
+                "intent": "Create bounded task context, explain selected files, surface route/API relationships, and suggest relevant tests for an external AI agent.",
                 "equivalent_commands": [
                     "uacos impact --repo . --task '<task>'",
                     "uacos context-compressed --repo . --task '<task>' --max-tokens 6000",
@@ -107,11 +107,14 @@ def run_assist(repo_root: Path, task: str, max_tokens: int = 6000, max_files: in
     from uacos.compression.engine import compressed_context
     from uacos.impact.explainer import explain_selected_files
     from uacos.impact.api_graph import build_api_graph
+    from uacos.impact.test_map import suggest_tests_for_selected_files
 
     impact = impact_by_task(repo_root, task)
     context = compressed_context(repo_root, task, max_tokens=max_tokens, max_files=max_files)
-    explanations = explain_selected_files(repo_root, task, context.get("selected_files", []), impact=impact)
-    api_graph = build_api_graph(repo_root, task=task, selected_files=context.get("selected_files", []))
+    selected_files = context.get("selected_files", [])
+    explanations = explain_selected_files(repo_root, task, selected_files, impact=impact)
+    api_graph = build_api_graph(repo_root, task=task, selected_files=selected_files)
+    test_map = suggest_tests_for_selected_files(repo_root, selected_files)
     if isinstance(context, dict) and "content" in context and not show_content:
         context = {k: v for k, v in context.items() if k != "content"}
     status = "pass" if isinstance(context, dict) and context.get("status") in {"ok", "pass"} else "fail"
@@ -124,7 +127,8 @@ def run_assist(repo_root: Path, task: str, max_tokens: int = 6000, max_files: in
         "context": context,
         "selection_explanations": explanations,
         "api_graph": api_graph,
-        "next_step": "review selection_explanations and api_graph, then give the context file/report to your AI agent and validate its patch with uacos-flow guard",
+        "test_map": test_map,
+        "next_step": "review selection_explanations, api_graph, and test_map; then give the context to your AI agent and validate its patch with uacos-flow guard/apply-safe",
     }
 
 
