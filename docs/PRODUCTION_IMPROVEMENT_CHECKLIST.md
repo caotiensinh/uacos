@@ -92,8 +92,8 @@ Goal: make patch review/apply/report safer and easier.
 ### Required items
 
 - [x] Add `review-patch` style workflow that validates patch, impact alignment, and risk category.
-- [ ] Add safe apply flow that always checkpoints before changing code.
-- [ ] Add last-run evidence report.
+- [x] Add safe apply flow that always checkpoints before changing code.
+- [x] Add last-run evidence report.
 - [x] Add high-risk patch categories:
   - auth changes
   - network calls
@@ -104,14 +104,16 @@ Goal: make patch review/apply/report safer and easier.
 
 ### Done means
 
-- [ ] A patch can move through review -> guarded apply -> tests -> rollback/report without manual guessing.
+- [x] A patch can move through review -> guarded apply -> tests -> rollback/report without manual guessing.
 
 ### Current implementation status
 
 - `uacos.security.patch_review` adds patch risk classification around the existing patch gate.
-- `uacos-flow guard` now returns `validation`, `risk_review`, and optional `impact_alignment` without applying code.
-- `docs/PATCH_LIFECYCLE.md` documents the risk categories and safe lifecycle.
-- This is a review/risk foundation step. Safe apply flow and last-run evidence report are still pending.
+- `uacos-flow guard` returns `validation`, `risk_review`, and optional `impact_alignment` without applying code.
+- `uacos.security.patch_lifecycle.safe_apply_patch_file` wraps the existing transaction engine to checkpoint, apply, test, roll back on failure, and write latest evidence.
+- `uacos-flow apply-safe` exposes the safe apply path with `--yes`, required tests, and high-risk protection.
+- `docs/PATCH_LIFECYCLE.md` documents risk categories, safe apply, rollback, and the latest report path.
+- CI evidence is still required before calling this phase complete.
 
 ## Phase 5 — Context intelligence upgrade
 
