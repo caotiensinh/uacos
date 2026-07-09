@@ -27,6 +27,18 @@ Non-English text is allowed only when it is technically necessary, for example:
 
 Any exception should be isolated and explained in English.
 
+## Automated check
+
+Run:
+
+```bash
+python scripts/check_english_docs.py --repo . --summary
+```
+
+The release gate also runs this check as `english_language_check`.
+
+The check scans repository text files for common non-English scripts and Vietnamese diacritics. It is conservative: if a technically necessary exception is needed, isolate it and explain the reason in English.
+
 ## Required style
 
 Use clear technical English:
@@ -55,6 +67,7 @@ unless a benchmark or validation report directly supports the exact claim.
 Before merging documentation or user-facing changes, check:
 
 - Is the new text in English?
+- Does `python scripts/check_english_docs.py --repo . --summary` pass?
 - Is the target reader clear?
 - Is the claim supported by evidence?
 - Is the limitation stated when needed?
