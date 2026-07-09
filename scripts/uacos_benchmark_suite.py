@@ -97,6 +97,7 @@ def run_suite(root_repo: Path, suite: dict) -> dict:
     tasks = [str(t) for t in suite.get("tasks", [])]
     max_tokens = int(suite.get("max_tokens", 3000))
     max_files = int(suite.get("max_files", 4))
+    max_repo_files = int(suite.get("max_repo_files", 500))
     skip_cache_probe = bool(suite.get("skip_cache_probe", True))
 
     perf = run_benchmark(
@@ -104,6 +105,7 @@ def run_suite(root_repo: Path, suite: dict) -> dict:
         tasks,
         max_tokens=max_tokens,
         max_files=max_files,
+        max_repo_files=max_repo_files,
         size=str(suite.get("size", "small")),
         skip_cache_probe=skip_cache_probe,
     )
@@ -114,6 +116,7 @@ def run_suite(root_repo: Path, suite: dict) -> dict:
         "repo": str(repo_root),
         "max_tokens": max_tokens,
         "max_files": max_files,
+        "max_repo_files": max_repo_files,
         "performance": perf,
         "context_quality": quality,
     }
@@ -130,6 +133,8 @@ def summarize_suites(suites: list[dict], thresholds: dict | None = None) -> dict
 
     task_success_rate = round(len([t for t in task_reports if t.get("status") == "ok"]) / max(1, len(task_reports)), 4)
     avg_savings = round(sum(float(t.get("savings_percent") or 0.0) for t in task_reports) / max(1, len(task_reports)), 2)
+    avg_full_repo_reduction = round(sum(float(t.get("full_repo_input_context_reduction_percent") or 0.0) for t in task_reports) / max(1, len(task_reports)), 2)
+    tasks_meeting_99 = len([t for t in task_reports if (t.get("claim_classification") or {}).get("target_99_input_context_reduction_met")])
     avg_quality = round(sum(quality_rates) / max(1, len(quality_rates)), 4)
 
     min_task_success = float(thresholds.get("min_task_success_rate", 1.0))
@@ -144,6 +149,9 @@ def summarize_suites(suites: list[dict], thresholds: dict | None = None) -> dict
         "task_success_rate": task_success_rate,
         "average_context_quality_pass_rate": avg_quality,
         "average_savings_percent": avg_savings,
+        "average_full_repo_input_context_reduction_percent": avg_full_repo_reduction,
+        "tasks_meeting_99_input_context_reduction": tasks_meeting_99,
+        "claim_warning": "99% may only refer to full-repo input-context reduction on measured tasks, not total AI workflow token savings.",
         "thresholds": {
             "min_task_success_rate": min_task_success,
             "min_context_quality_pass_rate": min_quality,
@@ -165,7 +173,8 @@ def run_benchmark_suite(root_repo: Path, manifest_path: Path) -> dict:
             "requires_cloud_llm": False,
             "token_values": "estimates_not_provider_billing_records",
             "quality_signal": "keyword and banned-word checks over compressed context",
-            "claim_policy": "do not claim 80-90 percent savings without real benchmark evidence",
+            "claim_policy": "do not claim 80-90 percent or 99 percent savings without real benchmark evidence",
+            "ninety_nine_policy": "99 percent can only describe full-repo input-context reduction on measured tasks, not total AI workflow token savings",
         },
         "summary": summary,
         "method_notes": manifest.get("method_notes") or [],
