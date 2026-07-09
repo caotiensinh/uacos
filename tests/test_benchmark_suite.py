@@ -36,8 +36,18 @@ def test_summarize_suites_passes_with_good_metrics():
         {
             "performance": {
                 "tasks": [
-                    {"status": "ok", "savings_percent": 60.0},
-                    {"status": "ok", "savings_percent": 40.0},
+                    {
+                        "status": "ok",
+                        "savings_percent": 60.0,
+                        "full_repo_input_context_reduction_percent": 99.1,
+                        "claim_classification": {"target_99_input_context_reduction_met": True},
+                    },
+                    {
+                        "status": "ok",
+                        "savings_percent": 40.0,
+                        "full_repo_input_context_reduction_percent": 95.0,
+                        "claim_classification": {"target_99_input_context_reduction_met": False},
+                    },
                 ]
             },
             "context_quality": {"pass_rate": 1.0},
@@ -47,6 +57,9 @@ def test_summarize_suites_passes_with_good_metrics():
     assert summary["status"] == "pass"
     assert summary["task_success_rate"] == 1.0
     assert summary["average_savings_percent"] == 50.0
+    assert summary["average_full_repo_input_context_reduction_percent"] == 97.05
+    assert summary["tasks_meeting_99_input_context_reduction"] == 1
+    assert "not total AI workflow" in summary["claim_warning"]
 
 
 def test_summarize_suites_fails_when_task_success_is_low():
