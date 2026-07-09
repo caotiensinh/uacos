@@ -1,0 +1,38 @@
+{
+  "status": "pass",
+  "mode": "status",
+  "repo": "/path/to/repo",
+  "doctor_status": "pass",
+  "core_ready": true,
+  "missing_core_artifacts": [],
+  "missing_evidence_artifacts": [
+    "benchmark_report",
+    "release_gate_report",
+    "latest_patch_lifecycle_report"
+  ],
+  "artifacts": {
+    "graph": {
+      "path": "/path/to/repo/.uacos/graph/dependency_graph.json",
+      "exists": true,
+      "size_bytes": 12000
+    },
+    "summary_cache": {
+      "path": "/path/to/repo/.uacos/compression/summary_cache.json",
+      "exists": true,
+      "size_bytes": 8500
+    },
+    "benchmark_report": {
+      "path": "/path/to/repo/reports/uacos_benchmark_suite_report.json",
+      "exists": false,
+      "size_bytes": 0
+    }
+  },
+  "next_step": "uacos-flow assist --repo . --task '<your task>'",
+  "recommended_workflow": [
+    "uacos-flow setup --repo . --task '<your task>'",
+    "uacos-flow assist --repo . --task '<your task>' --max-tokens 6000",
+    "uacos-flow guard --repo . --patch change.diff --allowed-file <path> --test 'pytest -q'",
+    "uacos-flow apply-safe --repo . --patch change.diff --allowed-file <path> --test 'pytest -q' --yes"
+  ],
+  "claim": "Status is a local readiness summary. Missing evidence artifacts are normal until those workflows are run."
+}
