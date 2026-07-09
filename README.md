@@ -19,23 +19,20 @@ See [Strategic Status](docs/STRATEGIC_STATUS.md) for the current goal alignment,
 
 ```bash
 python -m pip install -e .
-python -m uacos.cli init --repo .
-python -m uacos.cli auto --repo . --summary
+uacos-flow setup --repo . --task "fix login bug safely"
+uacos-flow doctor --repo .
 ```
 
 Expected output:
 
-```bash
-$ python -m uacos.cli init --repo .
-UACOS initialized in .
-$ python -m uacos.cli auto --repo . --summary
+```json
 {
   "status": "pass",
-  "mode": "auto_once",
-  "selected_file_count": 4,
-  "compressed_tokens_est": 1650,
-  "tokens_saved_est": 4702,
-  "savings_percent": 74.02
+  "mode": "setup",
+  "quick_commands": [
+    "uacos-flow doctor --repo .",
+    "uacos-flow assist --repo . --task \"fix login bug safely\" --max-tokens 6000"
+  ]
 }
 ```
 
@@ -45,6 +42,8 @@ Use `uacos-flow` when you do not want to remember the lower-level command surfac
 
 ```bash
 uacos-flow list
+uacos-flow setup --repo . --task "fix MCP docs"
+uacos-flow doctor --repo .
 uacos-flow prepare --repo . --summary
 uacos-flow assist --repo . --task "fix MCP docs" --max-tokens 6000
 uacos-flow guard --repo . --patch change.diff --task "fix MCP docs" --allowed-file docs/PRODUCT_WORKFLOWS.md --test "pytest -q"
@@ -57,13 +56,15 @@ uacos-flow benchmark --repo . --manifest evals/benchmark_suite.json
 
 ## Product Workflows
 
-UACOS has five supported product workflows:
+UACOS has seven supported product workflows:
 
-1. **Prepare Mode** — build repo graph, cache, memory, health reports, and compressed readiness evidence before AI edits.
-2. **Assist Mode** — give external AI agents bounded task context, selected-file explanations, and route/API graph signals instead of letting them read the whole repository.
-3. **Guard Mode** — validate patches through scope gates, secret scans, risk review, and optional task alignment without applying code.
-4. **Apply-safe Mode** — apply a reviewed patch through checkpoint, tests, auto-rollback, and last-run evidence.
-5. **Orchestrate Mode** — coordinate bounded `spec -> context -> delegate -> patch -> test -> record -> improve` loops without becoming the agent or bypassing Guard/Apply-safe Mode.
+1. **Setup Mode** — one-command local setup for new users: bootstrap, graph, cache, scripts, and actionable doctor.
+2. **Doctor Mode** — user-actionable readiness status with concrete next commands.
+3. **Prepare Mode** — build repo graph, cache, memory, health reports, and compressed readiness evidence before AI edits.
+4. **Assist Mode** — give external AI agents bounded task context, selected-file explanations, symbol context, route/API graph signals, test suggestions, and config-risk review.
+5. **Guard Mode** — validate patches through scope gates, secret scans, risk review, and optional task alignment without applying code.
+6. **Apply-safe Mode** — apply a reviewed patch through checkpoint, tests, auto-rollback, and last-run evidence.
+7. **Orchestrate Mode** — coordinate bounded `spec -> context -> delegate -> patch -> test -> record -> improve` loops without becoming the agent or bypassing Guard/Apply-safe Mode.
 
 See [Product Workflows](docs/PRODUCT_WORKFLOWS.md) for the finite upgrade plan and MCP product/orchestration contracts.
 
@@ -84,6 +85,7 @@ The suite records token estimates, savings percent, context quality signals, and
 - `reports/uacos_auto_report.json` for Auto Mode summary
 - `reports/release_gate_report.json` for release readiness checks
 - `.uacos/patch_lifecycle/latest_patch_lifecycle_report.json` for the latest safe-apply evidence
+- `.uacos/scripts/` convenience dashboard launchers from `uacos-flow setup`
 - `uacos/` package and CLI entrypoint installed via `uacos`
 - `uacos-flow` simplified product workflow command
 - `docs/` and `CHANGELOG.md` for published project onboarding
@@ -96,6 +98,7 @@ The suite records token estimates, savings percent, context quality signals, and
 - [External Agent Integration](docs/EXTERNAL_AGENT_INTEGRATION.md)
 - [Patch Lifecycle](docs/PATCH_LIFECYCLE.md)
 - [Context Intelligence](docs/CONTEXT_INTELLIGENCE.md)
+- [Onboarding](docs/ONBOARDING.md)
 - [User Guide](docs/USER_GUIDE.md)
 - [Auto Mode](docs/AUTO_MODE.md)
 - [Autopilot Mode](docs/AUTOPILOT_MODE.md)
