@@ -36,6 +36,21 @@ Example:
 }
 ```
 
+### Symbol context
+
+`uacos-flow assist` returns `symbol_context` from the existing static Python graph.
+
+The symbol context includes:
+
+- symbols defined in selected files
+- task symbol matches
+- incoming calls to selected files
+- outgoing calls from selected files
+- incoming/outgoing import edges
+- graph stats
+
+This helps the user see not just which file was selected, but what functions/classes are inside it and which other files call/import it.
+
 ### Route/API graph
 
 `uacos-flow assist` also returns `api_graph`.
@@ -110,6 +125,12 @@ Expected output includes:
     "status": "ok",
     "explanations": []
   },
+  "symbol_context": {
+    "status": "ok",
+    "selected_file_symbols": [],
+    "incoming_calls_to_selected": [],
+    "outgoing_calls_from_selected": []
+  },
   "api_graph": {
     "status": "ok",
     "route_count": 1,
@@ -138,9 +159,10 @@ Expected output includes:
 - It does not guarantee every relevant test is detected.
 - It does not prove actual production deployment impact.
 - It does not replace secret scanning or patch-gate validation.
+- Symbol context is currently strongest for Python graph data and does not guarantee complete cross-language symbol coverage.
 
 ## Next upgrades
 
-- deeper symbol-level explanation
 - route/client matching across frontend and backend by normalized path
 - optional execution of recommended test commands through guarded evidence flow
+- richer cross-language symbol indexing
