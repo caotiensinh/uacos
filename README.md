@@ -48,9 +48,20 @@ UACOS has four supported product workflows:
 
 See [Product Workflows](docs/PRODUCT_WORKFLOWS.md) for the finite upgrade plan and MCP product/orchestration contracts.
 
+## Benchmark Evidence
+
+Run the repeatable benchmark suite before making public savings claims:
+
+```bash
+python scripts/uacos_benchmark_suite.py --repo . --manifest evals/benchmark_suite.json --summary
+```
+
+The suite records token estimates, savings percent, context quality signals, and a claim policy. Token savings are estimates for trend tracking, not provider billing records.
+
 ## What you get
 
 - `reports/uacos_performance_report.json` with token savings: 4,702 saved tokens (74.02%)
+- `reports/uacos_benchmark_suite_report.json` with repeatable suite-level benchmark evidence
 - `reports/uacos_auto_report.json` for Auto Mode summary
 - `reports/release_gate_report.json` for release readiness checks
 - `uacos/` package and CLI entrypoint installed via `uacos`
