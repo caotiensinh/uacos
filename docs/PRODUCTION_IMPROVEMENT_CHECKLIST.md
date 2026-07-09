@@ -142,21 +142,24 @@ Goal: make UACOS easier for real users.
 
 - [x] Add one-command project setup.
 - [x] Add `doctor` output focused on user action, not internal implementation.
-- [ ] Add common workflow recipes.
-- [ ] Add example reports.
-- [ ] Add dashboard summary or terminal TUI for key status.
+- [x] Add common workflow recipes.
+- [x] Add example reports.
+- [x] Add dashboard summary or terminal TUI for key status.
 
 ### Done means
 
-- [ ] A new developer can install, prepare a repo, generate context, validate a patch, and read evidence without studying the full command surface.
+- [x] A new developer can install, prepare a repo, generate context, validate a patch, and read evidence without studying the full command surface.
 
 ### Current implementation status
 
 - `uacos.onboarding.setup_project` adds one-command local setup for bootstrap, graph, summary cache, run scripts, and doctor.
 - `uacos.onboarding.actionable_doctor` returns failed checks, warnings, recommended commands, and a concrete next step.
-- `uacos-flow setup` and `uacos-flow doctor` expose these flows.
-- `docs/ONBOARDING.md` documents the setup/doctor workflow.
-- CI evidence is still required before calling these Phase 6 items complete.
+- `uacos.onboarding.terminal_status` returns a compact terminal/dashboard-friendly readiness and evidence summary.
+- `uacos-flow setup`, `uacos-flow doctor`, and `uacos-flow status` expose these flows.
+- `docs/ONBOARDING.md` documents setup, doctor, and status.
+- `docs/WORKFLOW_RECIPES.md` documents common safe workflows.
+- `examples/reports/uacos_flow_status_example.json` provides an example status report.
+- This completes the Phase 6 functional scope, but CI evidence is still required before calling Phase 6 cleanly complete.
 
 ## Phase 7 — Product proof package
 
