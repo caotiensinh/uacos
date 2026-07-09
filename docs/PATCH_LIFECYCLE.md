@@ -12,6 +12,9 @@ uacos-flow guard / MCP ingest_patch(apply=false)
         |
         v
 scope validation -> secret scan -> risk review -> task alignment -> tests required -> guarded apply only
+        |
+        v
+uacos-flow apply-safe -> checkpoint -> apply -> tests -> rollback on failure -> latest evidence report
 ```
 
 ## Guard Mode behavior
@@ -23,6 +26,29 @@ scope validation -> secret scan -> risk review -> task alignment -> tests requir
 - `impact_alignment` — task-to-patch alignment when a task is supplied.
 
 `uacos-flow guard` does **not** apply code.
+
+## Safe Apply behavior
+
+`uacos-flow apply-safe` is the guarded apply path. It wraps the existing transaction engine instead of inventing a second patch application system.
+
+It blocks by default unless all of the following are true:
+
+- `--yes` is present.
+- at least one `--test` command is present.
+- patch review is not blocked.
+- high-risk patches use `--allow-high-risk` after human review.
+
+When allowed, it runs:
+
+```text
+risk review -> transaction checkpoint -> patch apply -> tests -> rollback on test failure -> latest patch lifecycle report
+```
+
+The latest report is written to:
+
+```text
+.uacos/patch_lifecycle/latest_patch_lifecycle_report.json
+```
 
 ## Risk categories
 
@@ -55,7 +81,7 @@ A patch review may require:
 - `tests_required_before_safe_apply`
 - `apply_only_through_guarded_transaction_or_explicit_mcp_apply`
 
-## Example
+## Review example
 
 ```bash
 uacos-flow guard \
@@ -80,9 +106,36 @@ Expected output includes:
 }
 ```
 
+## Safe apply example
+
+```bash
+uacos-flow apply-safe \
+  --repo . \
+  --patch change.diff \
+  --allowed-file app/auth.py \
+  --test "pytest -q" \
+  --yes \
+  --allow-high-risk
+```
+
+Expected output includes:
+
+```json
+{
+  "status": "pass",
+  "writes_code": true,
+  "transaction": {
+    "status": "committed"
+  },
+  "report_file": ".uacos/patch_lifecycle/latest_patch_lifecycle_report.json"
+}
+```
+
+If tests fail, the transaction engine restores the checkpoint and the lifecycle report records the rolled-back transaction.
+
 ## What this does not prove
 
 - Risk review does not prove the patch is correct.
-- Risk review does not replace tests or human review.
-- Risk review does not apply code.
-- High-risk patches can still be valid, but they need stronger review evidence.
+- Safe apply does not remove the need for tests.
+- High-risk patches still need human review.
+- Passing tests do not prove full production readiness.
