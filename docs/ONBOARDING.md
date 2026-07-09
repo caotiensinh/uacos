@@ -53,6 +53,29 @@ Example when metadata is missing:
 }
 ```
 
+## Status summary
+
+Run:
+
+```bash
+uacos-flow status --repo .
+```
+
+Status returns a compact terminal/dashboard-friendly view:
+
+- doctor status
+- whether core artifacts are ready
+- missing core artifacts
+- missing evidence artifacts
+- recommended workflow
+- next step
+
+An example report is available at:
+
+```text
+examples/reports/uacos_flow_status_example.json
+```
+
 ## Normal workflow after setup
 
 ```bash
@@ -60,6 +83,16 @@ uacos-flow assist --repo . --task "fix login bug safely" --max-tokens 6000
 uacos-flow guard --repo . --patch change.diff --allowed-file app/auth.py --test "pytest -q"
 uacos-flow apply-safe --repo . --patch change.diff --allowed-file app/auth.py --test "pytest -q" --yes
 ```
+
+## Recipes
+
+See [Workflow Recipes](WORKFLOW_RECIPES.md) for common safe workflows:
+
+- first-time setup
+- AI-assisted edit
+- high-risk config/deploy change
+- finite orchestration plan
+- benchmark before making public claims
 
 ## What setup does not prove
 
