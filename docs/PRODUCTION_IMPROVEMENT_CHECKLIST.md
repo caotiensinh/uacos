@@ -2,6 +2,8 @@
 
 This checklist turns the current strategic review into a finite production upgrade plan. The goal is to improve UACOS from a useful local engineering tool into a stronger product for developers and teams using AI coding agents.
 
+For the organized documentation map, start with [Documentation Index](README.md) and [Current Status](CURRENT_STATUS.md).
+
 ## Completion rule
 
 A checklist item is not complete until it has:
@@ -172,13 +174,15 @@ Goal: prepare credible public or customer-facing proof.
 
 - [x] UACOS can be presented without overclaiming and without hiding limitations.
 
-### Current implementation status
+### Evidence
 
-- `docs/CLAIM_WORDING_GUIDE.md` defines safe, benchmarked, and forbidden claims.
-- `docs/PUBLIC_BENCHMARK_REPORT_TEMPLATE.md` defines the evidence required before publishing benchmark claims.
-- `docs/CASE_STUDY_TEMPLATE.md` defines a conservative case-study format.
-- `docs/AGENT_COMPARISON_MATRIX.md` positions UACOS as a repo brain/safety layer, not an agent replacement.
-- This completes the Phase 7 functional scope, but CI evidence is still required before calling Phase 7 cleanly complete.
+- CI run `29024685290` passed compile, tests, self check, and release gate on Python 3.9, 3.11, and 3.13.
+
+## Documentation cleanup
+
+- [x] Added `docs/README.md` as the main documentation index.
+- [x] Added `docs/CURRENT_STATUS.md` as the current status snapshot.
+- [x] Simplified root `README.md` and moved detailed navigation into the documentation index.
 
 ## Remaining evidence gaps
 
