@@ -81,6 +81,15 @@ python scripts/uacos_benchmark_suite.py --repo . --manifest evals/benchmark_suit
 
 The suite records token estimates, savings percent, context quality signals, and a claim policy. Token savings are estimates for trend tracking, not provider billing records.
 
+## Product Proof Package
+
+Use these before publishing claims or customer-facing material:
+
+- [Claim Wording Guide](docs/CLAIM_WORDING_GUIDE.md)
+- [Public Benchmark Report Template](docs/PUBLIC_BENCHMARK_REPORT_TEMPLATE.md)
+- [Case Study Template](docs/CASE_STUDY_TEMPLATE.md)
+- [Agent Comparison Matrix](docs/AGENT_COMPARISON_MATRIX.md)
+
 ## What you get
 
 - `reports/uacos_performance_report.json` with token savings: 4,702 saved tokens (74.02%)
@@ -100,6 +109,10 @@ The suite records token estimates, savings percent, context quality signals, and
 - [Strategic Status](docs/STRATEGIC_STATUS.md)
 - [Product Workflows](docs/PRODUCT_WORKFLOWS.md)
 - [Workflow Recipes](docs/WORKFLOW_RECIPES.md)
+- [Claim Wording Guide](docs/CLAIM_WORDING_GUIDE.md)
+- [Public Benchmark Report Template](docs/PUBLIC_BENCHMARK_REPORT_TEMPLATE.md)
+- [Case Study Template](docs/CASE_STUDY_TEMPLATE.md)
+- [Agent Comparison Matrix](docs/AGENT_COMPARISON_MATRIX.md)
 - [External Agent Integration](docs/EXTERNAL_AGENT_INTEGRATION.md)
 - [Patch Lifecycle](docs/PATCH_LIFECYCLE.md)
 - [Context Intelligence](docs/CONTEXT_INTELLIGENCE.md)
