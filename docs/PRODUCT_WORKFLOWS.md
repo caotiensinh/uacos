@@ -31,6 +31,21 @@ UACOS should integrate with agents such as Goose, Claude Code, Codex, OpenClaw, 
 - Unbounded autonomous loops.
 - Claiming 80-90% savings without benchmark evidence.
 
+## Simple command surface
+
+Use `uacos-flow` for the main product workflows:
+
+```bash
+uacos-flow list
+uacos-flow prepare --repo . --summary
+uacos-flow assist --repo . --task "fix MCP docs" --max-tokens 6000
+uacos-flow guard --repo . --patch change.diff --task "fix MCP docs" --allowed-file docs/PRODUCT_WORKFLOWS.md
+uacos-flow orchestrate --spec "upgrade safely until tests pass" --agent goose --test "pytest -q" --max-iterations 3
+uacos-flow benchmark --repo . --manifest evals/benchmark_suite.json
+```
+
+`uacos-flow` is a compatibility-safe wrapper. It does not remove or change the existing lower-level `uacos ...` commands.
+
 ## Four core pillars
 
 1. **Token and prompt optimization** — select relevant files, compress context, reuse memory/skills, and keep prompts bounded.
@@ -52,6 +67,12 @@ uacos compress-cache --repo .
 uacos auto --repo . --summary
 ```
 
+Or use the simplified wrapper:
+
+```bash
+uacos-flow prepare --repo . --summary
+```
+
 Purpose: build local repo state, graph, cache, memory, health report, and compressed readiness evidence.
 
 Prepare Mode must not edit project code.
@@ -64,6 +85,12 @@ Use this when an external AI agent needs context:
 uacos impact --repo . --task "<task>"
 uacos context-compressed --repo . --task "<task>" --max-tokens 6000
 uacos mcp-serve --repo . --host 127.0.0.1 --port 8769
+```
+
+Or use the simplified wrapper:
+
+```bash
+uacos-flow assist --repo . --task "<task>" --max-tokens 6000
 ```
 
 Purpose: give the agent bounded context instead of letting it read the whole repository.
@@ -81,9 +108,15 @@ uacos autopilot-run --repo . --task-file .uacos/tasks/TASK-xxxx.json --apply --y
 python scripts/release_gate.py
 ```
 
+Or use the simplified validation wrapper:
+
+```bash
+uacos-flow guard --repo . --patch change.diff --task "<task>" --allowed-file path/to/file.py
+```
+
 Purpose: validate scope, check task alignment, scan for secrets, checkpoint affected files, run tests, and roll back on failure.
 
-Guard Mode can edit code only through explicit opt-in and must keep release-gate evidence.
+Guard Mode can edit code only through explicit opt-in and must keep release-gate evidence. The simplified `uacos-flow guard` wrapper validates only; it does not apply patches.
 
 ### 4. Orchestrate Mode
 
@@ -93,6 +126,12 @@ Use this when an external agent or user wants a bounded DevOps-style loop:
 MCP tool: orchestration_contract
 MCP tool: plan_orchestration_loop
 MCP tool: loop_decision
+```
+
+Or use the simplified wrapper:
+
+```bash
+uacos-flow orchestrate --spec "<desired spec>" --agent goose --test "pytest -q" --max-iterations 3
 ```
 
 Purpose: coordinate the loop `spec -> context -> delegate -> validate patch -> apply/test -> record -> stop or improve`.
@@ -105,6 +144,7 @@ Run the repeatable benchmark suite before making public claims about savings:
 
 ```bash
 python scripts/uacos_benchmark_suite.py --repo . --manifest evals/benchmark_suite.json --summary
+uacos-flow benchmark --repo . --manifest evals/benchmark_suite.json
 ```
 
 The suite records:
