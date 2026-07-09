@@ -47,7 +47,8 @@ Use `uacos-flow` when you do not want to remember the lower-level command surfac
 uacos-flow list
 uacos-flow prepare --repo . --summary
 uacos-flow assist --repo . --task "fix MCP docs" --max-tokens 6000
-uacos-flow guard --repo . --patch change.diff --task "fix MCP docs" --allowed-file docs/PRODUCT_WORKFLOWS.md
+uacos-flow guard --repo . --patch change.diff --task "fix MCP docs" --allowed-file docs/PRODUCT_WORKFLOWS.md --test "pytest -q"
+uacos-flow apply-safe --repo . --patch change.diff --allowed-file docs/PRODUCT_WORKFLOWS.md --test "pytest -q" --yes
 uacos-flow orchestrate --spec "upgrade safely until tests pass" --agent goose --test "pytest -q" --max-iterations 3
 uacos-flow benchmark --repo . --manifest evals/benchmark_suite.json
 ```
@@ -56,12 +57,13 @@ uacos-flow benchmark --repo . --manifest evals/benchmark_suite.json
 
 ## Product Workflows
 
-UACOS has four supported product workflows:
+UACOS has five supported product workflows:
 
 1. **Prepare Mode** — build repo graph, cache, memory, health reports, and compressed readiness evidence before AI edits.
 2. **Assist Mode** — give external AI agents bounded task context instead of letting them read the whole repository.
-3. **Guard Mode** — validate/apply patches through scope gates, secret scans, tests, checkpoints, and rollback.
-4. **Orchestrate Mode** — coordinate bounded `spec -> context -> delegate -> patch -> test -> record -> improve` loops without becoming the agent or applying patches outside Guard Mode.
+3. **Guard Mode** — validate patches through scope gates, secret scans, risk review, and optional task alignment without applying code.
+4. **Apply-safe Mode** — apply a reviewed patch through checkpoint, tests, auto-rollback, and last-run evidence.
+5. **Orchestrate Mode** — coordinate bounded `spec -> context -> delegate -> patch -> test -> record -> improve` loops without becoming the agent or bypassing Guard/Apply-safe Mode.
 
 See [Product Workflows](docs/PRODUCT_WORKFLOWS.md) for the finite upgrade plan and MCP product/orchestration contracts.
 
@@ -81,6 +83,7 @@ The suite records token estimates, savings percent, context quality signals, and
 - `reports/uacos_benchmark_suite_report.json` with repeatable suite-level benchmark evidence
 - `reports/uacos_auto_report.json` for Auto Mode summary
 - `reports/release_gate_report.json` for release readiness checks
+- `.uacos/patch_lifecycle/latest_patch_lifecycle_report.json` for the latest safe-apply evidence
 - `uacos/` package and CLI entrypoint installed via `uacos`
 - `uacos-flow` simplified product workflow command
 - `docs/` and `CHANGELOG.md` for published project onboarding
