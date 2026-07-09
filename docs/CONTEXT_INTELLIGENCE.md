@@ -73,6 +73,29 @@ The map includes:
 
 These commands are candidates for evidence. They are not proof until executed.
 
+### Config/deployment risk map
+
+`uacos-flow assist` now returns `config_risk`.
+
+The map detects files that can affect runtime, deployment, CI, dependency resolution, databases, networking, or secrets, including:
+
+- `.env` and environment-style files
+- Dockerfile and compose files
+- GitHub Actions workflows
+- Kubernetes/Helm/deploy paths
+- dependency manifests and lock files
+- database migration/config files
+- nginx/network/proxy/server config
+
+The map includes:
+
+- risk level: `low`, `medium`, or `high`
+- categories such as `secret_or_environment_config`, `ci_release_pipeline`, `container_runtime`, `dependency_surface`, `database_or_migration`, and `network_runtime`
+- whether the risky config file is already in the selected context
+- recommended review actions
+
+High-risk config findings require human review before a patch should be trusted.
+
 ## Example
 
 ```bash
@@ -98,6 +121,11 @@ Expected output includes:
     "status": "ok",
     "mapped_source_count": 1,
     "mappings": []
+  },
+  "config_risk": {
+    "status": "ok",
+    "high_risk_count": 1,
+    "recommended_review": ["human_review_required_for_high_risk_config"]
   }
 }
 ```
@@ -108,11 +136,11 @@ Expected output includes:
 - It does not execute the app.
 - It does not guarantee every framework-specific route is detected.
 - It does not guarantee every relevant test is detected.
-- It does not yet map deployment/config risk.
+- It does not prove actual production deployment impact.
+- It does not replace secret scanning or patch-gate validation.
 
 ## Next upgrades
 
-- config/deployment risk map
 - deeper symbol-level explanation
 - route/client matching across frontend and backend by normalized path
 - optional execution of recommended test commands through guarded evidence flow
