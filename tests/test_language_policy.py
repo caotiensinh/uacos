@@ -12,7 +12,8 @@ def test_language_check_allows_english_text(tmp_path):
 
 
 def test_language_check_flags_vietnamese_text(tmp_path):
-    (tmp_path / "README.md").write_text("# Demo\n\nTài liệu này dùng tiếng Việt.\n", encoding="utf-8")
+    text = "# Demo\n\nT\u00e0i li\u1ec7u n\u00e0y d\u00f9ng ti\u1ebfng Vi\u1ec7t.\n"
+    (tmp_path / "README.md").write_text(text, encoding="utf-8")
 
     result = scan_repo(tmp_path)
 
@@ -22,7 +23,8 @@ def test_language_check_flags_vietnamese_text(tmp_path):
 
 
 def test_language_check_flags_cjk_text(tmp_path):
-    (tmp_path / "README.md").write_text("# Demo\n\n日本語の文章です。\n", encoding="utf-8")
+    text = "# Demo\n\n\u65e5\u672c\u8a9e\u306e\u6587\u7ae0\u3067\u3059\u3002\n"
+    (tmp_path / "README.md").write_text(text, encoding="utf-8")
 
     result = scan_repo(tmp_path)
 
