@@ -58,6 +58,20 @@ def _json_status(stdout: str):
     return None
 
 
+def _read_project_version(pyproject_text: str) -> str:
+    in_project = False
+    for raw_line in pyproject_text.splitlines():
+        line = raw_line.strip()
+        if line == "[project]":
+            in_project = True
+            continue
+        if in_project and line.startswith("["):
+            break
+        if in_project and line.startswith("version") and "=" in line:
+            return line.split("=", 1)[1].strip().strip('"')
+    raise ValueError("project.version not found in pyproject.toml")
+
+
 def no_pycache_in_release() -> dict:
     found = [str(p.relative_to(ROOT)) for p in ROOT.rglob("__pycache__") if "reports/pycache_compile" not in str(p)]
     return {"name": "no_pycache_in_release", "cmd": "find __pycache__", "returncode": 0 if not found else 1, "ok": not found, "stdout_tail": "\n".join(found[:20]), "stderr_tail": "", "json_status": "pass" if not found else "fail"}
@@ -68,12 +82,16 @@ def install_smoke_test() -> dict:
 
 
 def version_sync() -> dict:
-    import tomllib
-    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    py_version = pyproject["project"]["version"]
-    init_text = (ROOT / "uacos" / "__init__.py").read_text(encoding="utf-8")
-    ok = f'__version__ = "{py_version}"' in init_text
-    return {"name": "version_sync", "cmd": "pyproject vs uacos.__version__", "returncode": 0 if ok else 1, "ok": ok, "stdout_tail": py_version, "stderr_tail": "", "json_status": "pass" if ok else "fail"}
+    try:
+        py_version = _read_project_version((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        init_text = (ROOT / "uacos" / "__init__.py").read_text(encoding="utf-8")
+        ok = f'__version__ = "{py_version}"' in init_text
+        stderr_tail = ""
+    except Exception as exc:
+        py_version = "unknown"
+        ok = False
+        stderr_tail = str(exc)
+    return {"name": "version_sync", "cmd": "pyproject vs uacos.__version__", "returncode": 0 if ok else 1, "ok": ok, "stdout_tail": py_version, "stderr_tail": stderr_tail, "json_status": "pass" if ok else "fail"}
 
 
 def ollama_smoke_test() -> dict:
