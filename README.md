@@ -60,7 +60,7 @@ uacos-flow benchmark --repo . --manifest evals/benchmark_suite.json
 UACOS has five supported product workflows:
 
 1. **Prepare Mode** — build repo graph, cache, memory, health reports, and compressed readiness evidence before AI edits.
-2. **Assist Mode** — give external AI agents bounded task context instead of letting them read the whole repository.
+2. **Assist Mode** — give external AI agents bounded task context, selected-file explanations, and route/API graph signals instead of letting them read the whole repository.
 3. **Guard Mode** — validate patches through scope gates, secret scans, risk review, and optional task alignment without applying code.
 4. **Apply-safe Mode** — apply a reviewed patch through checkpoint, tests, auto-rollback, and last-run evidence.
 5. **Orchestrate Mode** — coordinate bounded `spec -> context -> delegate -> patch -> test -> record -> improve` loops without becoming the agent or bypassing Guard/Apply-safe Mode.
@@ -95,6 +95,7 @@ The suite records token estimates, savings percent, context quality signals, and
 - [Product Workflows](docs/PRODUCT_WORKFLOWS.md)
 - [External Agent Integration](docs/EXTERNAL_AGENT_INTEGRATION.md)
 - [Patch Lifecycle](docs/PATCH_LIFECYCLE.md)
+- [Context Intelligence](docs/CONTEXT_INTELLIGENCE.md)
 - [User Guide](docs/USER_GUIDE.md)
 - [Auto Mode](docs/AUTO_MODE.md)
 - [Autopilot Mode](docs/AUTOPILOT_MODE.md)
