@@ -48,6 +48,14 @@ def workflow_reference() -> dict:
                 ],
             },
             {
+                "name": "apply-safe",
+                "intent": "Apply a reviewed patch through checkpoint, tests, auto-rollback, and last-run evidence.",
+                "equivalent_commands": [
+                    "uacos-flow guard --patch change.diff --test 'pytest -q'",
+                    "uacos transaction-run ...",
+                ],
+            },
+            {
                 "name": "orchestrate",
                 "intent": "Create a finite spec-driven DevOps loop plan without executing agents or applying patches.",
                 "equivalent_commands": [
@@ -137,8 +145,34 @@ def run_guard(repo_root: Path, patch: str, task: str | None = None, allowed_file
         "risk_review": risk_review,
         "impact_alignment": alignment,
         "writes_code": False,
-        "next_step": "only apply through guarded transaction/autopilot commands after validation, explicit scope, tests, risk review, and confirmation",
+        "next_step": "only apply through uacos-flow apply-safe after validation, explicit scope, tests, risk review, and confirmation",
     }
+
+
+def run_apply_safe(
+    repo_root: Path,
+    patch: str,
+    title: str = "Safe patch apply",
+    objective: str = "Apply patch through UACOS guarded lifecycle",
+    allowed_files: list[str] | None = None,
+    allowed_dirs: list[str] | None = None,
+    tests: list[str] | None = None,
+    yes: bool = False,
+    allow_high_risk: bool = False,
+) -> dict:
+    from uacos.security.patch_lifecycle import safe_apply_patch_file
+
+    return safe_apply_patch_file(
+        repo_root,
+        Path(patch).resolve(),
+        title=title,
+        objective=objective,
+        allowed_files=allowed_files or [],
+        allowed_dirs=allowed_dirs or [],
+        tests=tests or [],
+        yes=yes,
+        allow_high_risk=allow_high_risk,
+    )
 
 
 def run_orchestrate(spec: str, agents: list[str] | None = None, tests: list[str] | None = None, max_iterations: int = 3) -> dict:
@@ -158,7 +192,7 @@ def run_benchmark(repo_root: Path, manifest: str, summary: bool = True) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="uacos-flow", description="Simplified UACOS product workflows: prepare, assist, guard, orchestrate, benchmark.")
+    parser = argparse.ArgumentParser(prog="uacos-flow", description="Simplified UACOS product workflows: prepare, assist, guard, apply-safe, orchestrate, benchmark.")
     sub = parser.add_subparsers(dest="mode")
 
     sub.add_parser("list", help="List simplified workflow modes.").set_defaults(handler=lambda args: workflow_reference())
@@ -185,6 +219,28 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--allowed-dir", action="append")
     p.add_argument("--test", action="append")
     p.set_defaults(handler=lambda args: run_guard(resolve_repo(args.repo), args.patch, task=args.task, allowed_files=args.allowed_file, allowed_dirs=args.allowed_dir, tests=args.test))
+
+    p = sub.add_parser("apply-safe", help="Apply a patch through checkpoint, tests, rollback, and evidence report.")
+    p.add_argument("--repo", default=".")
+    p.add_argument("--patch", required=True)
+    p.add_argument("--title", default="Safe patch apply")
+    p.add_argument("--objective", default="Apply patch through UACOS guarded lifecycle")
+    p.add_argument("--allowed-file", action="append")
+    p.add_argument("--allowed-dir", action="append")
+    p.add_argument("--test", action="append")
+    p.add_argument("--yes", action="store_true")
+    p.add_argument("--allow-high-risk", action="store_true")
+    p.set_defaults(handler=lambda args: run_apply_safe(
+        resolve_repo(args.repo),
+        args.patch,
+        title=args.title,
+        objective=args.objective,
+        allowed_files=args.allowed_file,
+        allowed_dirs=args.allowed_dir,
+        tests=args.test,
+        yes=args.yes,
+        allow_high_risk=args.allow_high_risk,
+    ))
 
     p = sub.add_parser("orchestrate", help="Create a finite spec-driven loop plan.")
     p.add_argument("--spec", required=True)
