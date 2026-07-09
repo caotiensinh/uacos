@@ -130,15 +130,9 @@ Goal: improve file selection quality before chasing extreme token reduction.
 - [x] UACOS can flag config/deployment/runtime risk files.
 - [x] UACOS can explain symbols with deeper graph support.
 
-### Current implementation status
+### Evidence
 
-- `uacos.impact.explainer` adds heuristic selected-file explanations.
-- `uacos.impact.symbol_context` exposes selected-file symbols, task symbol matches, call edges, and import edges from the existing Python graph.
-- `uacos.impact.api_graph` adds static route/API scanning for Python route decorators, JS/TS server routes, and JS/TS client API calls.
-- `uacos.impact.test_map` adds heuristic test-to-source mapping and recommended test commands.
-- `uacos.impact.config_risk` adds heuristic config/deployment/runtime risk mapping.
-- `uacos-flow assist` returns `selection_explanations`, `symbol_context`, `api_graph`, `test_map`, and `config_risk`.
-- This completes the Phase 5 functional scope, but CI evidence is still required before calling Phase 5 cleanly complete.
+- CI run `29023056924` passed compile, tests, self check, and release gate on Python 3.9, 3.11, and 3.13.
 
 ## Phase 6 — Usability and onboarding
 
@@ -146,15 +140,23 @@ Goal: make UACOS easier for real users.
 
 ### Required items
 
-- [ ] Add one-command project setup.
-- [ ] Add `doctor` output focused on user action, not internal implementation.
+- [x] Add one-command project setup.
+- [x] Add `doctor` output focused on user action, not internal implementation.
 - [ ] Add common workflow recipes.
 - [ ] Add example reports.
 - [ ] Add dashboard summary or terminal TUI for key status.
 
 ### Done means
 
-- A new developer can install, prepare a repo, generate context, validate a patch, and read evidence without studying the full command surface.
+- [ ] A new developer can install, prepare a repo, generate context, validate a patch, and read evidence without studying the full command surface.
+
+### Current implementation status
+
+- `uacos.onboarding.setup_project` adds one-command local setup for bootstrap, graph, summary cache, run scripts, and doctor.
+- `uacos.onboarding.actionable_doctor` returns failed checks, warnings, recommended commands, and a concrete next step.
+- `uacos-flow setup` and `uacos-flow doctor` expose these flows.
+- `docs/ONBOARDING.md` documents the setup/doctor workflow.
+- CI evidence is still required before calling these Phase 6 items complete.
 
 ## Phase 7 — Product proof package
 
