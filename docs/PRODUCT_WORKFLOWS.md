@@ -99,6 +99,27 @@ Purpose: coordinate the loop `spec -> context -> delegate -> validate patch -> a
 
 Orchestrate Mode does not execute agents, apply patches, or claim success by itself. It only plans and decides the safe next step. Code changes still flow through Guard Mode.
 
+## Benchmark evidence workflow
+
+Run the repeatable benchmark suite before making public claims about savings:
+
+```bash
+python scripts/uacos_benchmark_suite.py --repo . --manifest evals/benchmark_suite.json --summary
+```
+
+The suite records:
+
+- baseline token estimate without UACOS
+- compressed UACOS context token estimate
+- estimated saved tokens and savings percent
+- context quality pass rate
+- task success signal
+- method notes and claim policy
+
+The benchmark suite is also part of `scripts/release_gate.py`, so a broken manifest, runner, or report schema will fail the release gate.
+
+Important: token savings are estimates for trend tracking, not provider billing records. UACOS must not claim 80-90% savings unless repeatable benchmarks on real repositories support that claim.
+
 ## Bounded loop rule
 
 UACOS may coordinate repeated improvement, but it must never loop forever.
