@@ -14,6 +14,7 @@ UACOS is **not a Goose clone or general chat agent**. The AI coding agent propos
 - [Current Status](docs/CURRENT_STATUS.md) — completed phases, CI evidence, maturity, and remaining evidence gaps.
 - [Production Improvement Checklist](docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md) — finite roadmap and completion evidence.
 - [Strategic Status](docs/STRATEGIC_STATUS.md) — product positioning, Goose comparison, and maturity estimate.
+- [Language Policy](docs/LANGUAGE_POLICY.md) — English-only repository content policy and automated release-gate check.
 
 ## Requirements
 
