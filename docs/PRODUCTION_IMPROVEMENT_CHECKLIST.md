@@ -116,7 +116,7 @@ Goal: improve file selection quality before chasing extreme token reduction.
 
 ### Required items
 
-- [ ] Add symbol-level index support where practical.
+- [x] Add symbol-level index support where practical.
 - [x] Add route/API graph support for web apps.
 - [x] Add test-to-source mapping.
 - [x] Add config/deployment risk map.
@@ -128,17 +128,17 @@ Goal: improve file selection quality before chasing extreme token reduction.
 - [x] UACOS can surface static route/API relationships from Python and JS/TS files.
 - [x] UACOS can suggest likely tests for selected source files.
 - [x] UACOS can flag config/deployment/runtime risk files.
-- [ ] UACOS can explain symbols with deeper graph support.
+- [x] UACOS can explain symbols with deeper graph support.
 
 ### Current implementation status
 
 - `uacos.impact.explainer` adds heuristic selected-file explanations.
+- `uacos.impact.symbol_context` exposes selected-file symbols, task symbol matches, call edges, and import edges from the existing Python graph.
 - `uacos.impact.api_graph` adds static route/API scanning for Python route decorators, JS/TS server routes, and JS/TS client API calls.
 - `uacos.impact.test_map` adds heuristic test-to-source mapping and recommended test commands.
 - `uacos.impact.config_risk` adds heuristic config/deployment/runtime risk mapping.
-- `uacos-flow assist` returns `selection_explanations`, `api_graph`, `test_map`, and `config_risk`.
-- This improves transparency, test targeting, and runtime-risk review, but does not yet provide deep symbol-level explanation.
-- CI evidence is still required before calling this phase step complete.
+- `uacos-flow assist` returns `selection_explanations`, `symbol_context`, `api_graph`, `test_map`, and `config_risk`.
+- This completes the Phase 5 functional scope, but CI evidence is still required before calling Phase 5 cleanly complete.
 
 ## Phase 6 — Usability and onboarding
 
