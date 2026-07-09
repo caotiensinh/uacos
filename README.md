@@ -4,11 +4,16 @@
 ![License](https://img.shields.io/github/license/caotiensinh/uacos)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 
-UACOS is a local-first code intelligence, context-compression, orchestration, and release-gate toolkit that makes AI-assisted changes to a repository safer and cheaper — typed project memory, dependency-graph impact analysis that scopes changes before they're made, prompt/context optimization, patch-scope safety gates, secret scanning, transaction rollback, an LLM cache/budget layer, and a built-in MCP server, all running locally with no cloud dependency.
+UACOS is a local-first repo brain, context-compression layer, orchestration planner, and patch safety/evidence gate for AI coding workflows.
 
-UACOS is **not a Goose clone or general chat agent**. Its product role is to act as the repo brain, agent-code coordination layer, and safety gate underneath AI coding agents such as Goose, Claude Code, Codex, OpenClaw, Aider, Cline, or manual chat workflows.
+UACOS is **not a Goose clone or general chat agent**. The AI coding agent proposes or writes code. UACOS prepares bounded context, validates patch scope/risk, supports guarded apply/rollback, records evidence, and prevents unsupported product claims.
 
-See [Strategic Status](docs/STRATEGIC_STATUS.md) for the current goal alignment, Goose comparison, maturity estimate, and remaining production gaps. See [Production Improvement Checklist](docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md) for the finite upgrade plan.
+## Start here
+
+- [Documentation Index](docs/README.md) — organized map of all project documentation.
+- [Current Status](docs/CURRENT_STATUS.md) — completed phases, CI evidence, maturity, and remaining evidence gaps.
+- [Production Improvement Checklist](docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md) — finite roadmap and completion evidence.
+- [Strategic Status](docs/STRATEGIC_STATUS.md) — product positioning, Goose comparison, and maturity estimate.
 
 ## Requirements
 
@@ -37,51 +42,37 @@ Expected output:
 }
 ```
 
-## Simplified Workflow CLI
-
-Use `uacos-flow` when you do not want to remember the lower-level command surface:
+## Main workflow
 
 ```bash
-uacos-flow list
-uacos-flow setup --repo . --task "fix MCP docs"
-uacos-flow doctor --repo .
-uacos-flow status --repo .
-uacos-flow prepare --repo . --summary
 uacos-flow assist --repo . --task "fix MCP docs" --max-tokens 6000
 uacos-flow guard --repo . --patch change.diff --task "fix MCP docs" --allowed-file docs/PRODUCT_WORKFLOWS.md --test "pytest -q"
 uacos-flow apply-safe --repo . --patch change.diff --allowed-file docs/PRODUCT_WORKFLOWS.md --test "pytest -q" --yes
+```
+
+## Other useful commands
+
+```bash
+uacos-flow list
+uacos-flow prepare --repo . --summary
 uacos-flow orchestrate --spec "upgrade safely until tests pass" --agent goose --test "pytest -q" --max-iterations 3
 uacos-flow benchmark --repo . --manifest evals/benchmark_suite.json
 ```
 
-`uacos-flow` is only a wrapper. Existing `uacos ...` commands remain available and backward compatible.
+Existing `uacos ...` commands remain available and backward compatible.
 
-## Product Workflows
+## Supported product workflows
 
-UACOS has eight supported product workflows:
-
-1. **Setup Mode** — one-command local setup for new users: bootstrap, graph, cache, scripts, and actionable doctor.
+1. **Setup Mode** — one-command local setup: bootstrap, graph, cache, scripts, and actionable doctor.
 2. **Doctor Mode** — user-actionable readiness status with concrete next commands.
 3. **Status Mode** — terminal/dashboard-friendly readiness and evidence summary.
-4. **Prepare Mode** — build repo graph, cache, memory, health reports, and compressed readiness evidence before AI edits.
-5. **Assist Mode** — give external AI agents bounded task context, selected-file explanations, symbol context, route/API graph signals, test suggestions, and config-risk review.
-6. **Guard Mode** — validate patches through scope gates, secret scans, risk review, and optional task alignment without applying code.
-7. **Apply-safe Mode** — apply a reviewed patch through checkpoint, tests, auto-rollback, and last-run evidence.
-8. **Orchestrate Mode** — coordinate bounded `spec -> context -> delegate -> patch -> test -> record -> improve` loops without becoming the agent or bypassing Guard/Apply-safe Mode.
+4. **Prepare Mode** — repo graph, cache, memory, health reports, and compressed readiness evidence before AI edits.
+5. **Assist Mode** — bounded task context, selected-file explanations, symbol context, route/API graph, test suggestions, and config-risk review.
+6. **Guard Mode** — patch scope gates, secret scans, risk review, and optional task alignment without applying code.
+7. **Apply-safe Mode** — checkpoint, tests, auto-rollback, and last-run evidence.
+8. **Orchestrate Mode** — bounded `spec -> context -> delegate -> patch -> test -> record -> improve` planning without becoming the agent.
 
-See [Product Workflows](docs/PRODUCT_WORKFLOWS.md) for the finite upgrade plan and MCP product/orchestration contracts.
-
-## Benchmark Evidence
-
-Run the repeatable benchmark suite before making public savings claims:
-
-```bash
-python scripts/uacos_benchmark_suite.py --repo . --manifest evals/benchmark_suite.json --summary
-```
-
-The suite records token estimates, savings percent, context quality signals, and a claim policy. Token savings are estimates for trend tracking, not provider billing records.
-
-## Product Proof Package
+## Product proof package
 
 Use these before publishing claims or customer-facing material:
 
@@ -90,36 +81,31 @@ Use these before publishing claims or customer-facing material:
 - [Case Study Template](docs/CASE_STUDY_TEMPLATE.md)
 - [Agent Comparison Matrix](docs/AGENT_COMPARISON_MATRIX.md)
 
+## Evidence and claims
+
+Run the repeatable benchmark suite before making public savings claims:
+
+```bash
+python scripts/uacos_benchmark_suite.py --repo . --manifest evals/benchmark_suite.json --summary
+```
+
+Safe baseline claim:
+
+> UACOS reduces unnecessary repository context sent to AI coding agents by selecting task-relevant files, compressing context, and validating changes through local safety gates.
+
+Do **not** claim 80-90% or 99% token savings unless a benchmark report directly supports that exact claim.
+
 ## What you get
 
-- `reports/uacos_performance_report.json` with token savings: 4,702 saved tokens (74.02%)
-- `reports/uacos_benchmark_suite_report.json` with repeatable suite-level benchmark evidence
+- `reports/uacos_performance_report.json` for token/context estimates
+- `reports/uacos_benchmark_suite_report.json` for repeatable benchmark evidence
 - `reports/uacos_auto_report.json` for Auto Mode summary
 - `reports/release_gate_report.json` for release readiness checks
 - `.uacos/patch_lifecycle/latest_patch_lifecycle_report.json` for the latest safe-apply evidence
 - `.uacos/scripts/` convenience dashboard launchers from `uacos-flow setup`
 - `examples/reports/uacos_flow_status_example.json` for example status output
-- `uacos/` package and CLI entrypoint installed via `uacos`
 - `uacos-flow` simplified product workflow command
-- `docs/` and `CHANGELOG.md` for published project onboarding
 
-## Links
+## Documentation
 
-- [Production Improvement Checklist](docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md)
-- [Strategic Status](docs/STRATEGIC_STATUS.md)
-- [Product Workflows](docs/PRODUCT_WORKFLOWS.md)
-- [Workflow Recipes](docs/WORKFLOW_RECIPES.md)
-- [Claim Wording Guide](docs/CLAIM_WORDING_GUIDE.md)
-- [Public Benchmark Report Template](docs/PUBLIC_BENCHMARK_REPORT_TEMPLATE.md)
-- [Case Study Template](docs/CASE_STUDY_TEMPLATE.md)
-- [Agent Comparison Matrix](docs/AGENT_COMPARISON_MATRIX.md)
-- [External Agent Integration](docs/EXTERNAL_AGENT_INTEGRATION.md)
-- [Patch Lifecycle](docs/PATCH_LIFECYCLE.md)
-- [Context Intelligence](docs/CONTEXT_INTELLIGENCE.md)
-- [Onboarding](docs/ONBOARDING.md)
-- [User Guide](docs/USER_GUIDE.md)
-- [Auto Mode](docs/AUTO_MODE.md)
-- [Autopilot Mode](docs/AUTOPILOT_MODE.md)
-- [Installation](docs/INSTALLATION.md)
-- [Security Model](docs/SECURITY_MODEL.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
+Use [docs/README.md](docs/README.md) as the main documentation index.
