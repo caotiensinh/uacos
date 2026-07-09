@@ -6,6 +6,8 @@ UACOS is not a Goose clone and should not drift into a general-purpose chat agen
 
 UACOS should integrate with agents such as Goose, Claude Code, Codex, OpenClaw, Aider, Cline, and manual chat workflows. It should make those agents cheaper and safer by preparing the right project context, coordinating bounded code workflows, and guarding patch application.
 
+For the current goal alignment, Goose comparison, maturity estimate, and remaining production gaps, see [Strategic Status](STRATEGIC_STATUS.md).
+
 ## Product boundary
 
 ### In scope
