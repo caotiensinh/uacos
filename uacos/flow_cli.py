@@ -21,6 +21,24 @@ def workflow_reference() -> dict:
         "backward_compatibility": "Existing uacos commands are preserved; uacos-flow only groups them by product mode.",
         "modes": [
             {
+                "name": "setup",
+                "intent": "One-command local setup for new users: bootstrap, graph, cache, scripts, and actionable doctor.",
+                "equivalent_commands": [
+                    "uacos bootstrap --repo .",
+                    "uacos graph-build --repo .",
+                    "uacos compress-cache --repo .",
+                    "uacos-flow doctor --repo .",
+                ],
+            },
+            {
+                "name": "doctor",
+                "intent": "Show user-actionable readiness status and next commands.",
+                "equivalent_commands": [
+                    "uacos health --repo .",
+                    "uacos-flow setup --repo . --refresh",
+                ],
+            },
+            {
                 "name": "prepare",
                 "intent": "Build repo state before any AI edit.",
                 "equivalent_commands": [
@@ -73,6 +91,18 @@ def workflow_reference() -> dict:
             },
         ],
     }
+
+
+def run_setup(repo_root: Path, task: str = "prepare repo for AI-assisted work", refresh: bool = False, dashboard_port: int = 8765) -> dict:
+    from uacos.onboarding import setup_project
+
+    return setup_project(repo_root, task=task, refresh=refresh, dashboard_port=dashboard_port)
+
+
+def run_doctor(repo_root: Path) -> dict:
+    from uacos.onboarding import actionable_doctor
+
+    return actionable_doctor(repo_root)
 
 
 def run_prepare(repo_root: Path, summary: bool = False, skip_performance: bool = False) -> dict:
@@ -208,10 +238,21 @@ def run_benchmark(repo_root: Path, manifest: str, summary: bool = True) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="uacos-flow", description="Simplified UACOS product workflows: prepare, assist, guard, apply-safe, orchestrate, benchmark.")
+    parser = argparse.ArgumentParser(prog="uacos-flow", description="Simplified UACOS product workflows: setup, doctor, prepare, assist, guard, apply-safe, orchestrate, benchmark.")
     sub = parser.add_subparsers(dest="mode")
 
     sub.add_parser("list", help="List simplified workflow modes.").set_defaults(handler=lambda args: workflow_reference())
+
+    p = sub.add_parser("setup", help="One-command local setup for new users.")
+    p.add_argument("--repo", default=".")
+    p.add_argument("--task", default="prepare repo for AI-assisted work")
+    p.add_argument("--refresh", action="store_true")
+    p.add_argument("--dashboard-port", type=int, default=8765)
+    p.set_defaults(handler=lambda args: run_setup(resolve_repo(args.repo), task=args.task, refresh=args.refresh, dashboard_port=args.dashboard_port))
+
+    p = sub.add_parser("doctor", help="Show actionable readiness status and next commands.")
+    p.add_argument("--repo", default=".")
+    p.set_defaults(handler=lambda args: run_doctor(resolve_repo(args.repo)))
 
     p = sub.add_parser("prepare", help="Build repo state before AI edits.")
     p.add_argument("--repo", default=".")
