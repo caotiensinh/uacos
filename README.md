@@ -4,9 +4,9 @@
 ![License](https://img.shields.io/github/license/caotiensinh/uacos)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 
-UACOS is a local-first code intelligence, context-compression, and release-gate toolkit that makes AI-assisted changes to a repository safer and cheaper — typed project memory, dependency-graph impact analysis that scopes changes before they're made, patch-scope safety gates, secret scanning, transaction rollback, an LLM cache/budget layer, and a built-in MCP server, all running locally with no cloud dependency.
+UACOS is a local-first code intelligence, context-compression, orchestration, and release-gate toolkit that makes AI-assisted changes to a repository safer and cheaper — typed project memory, dependency-graph impact analysis that scopes changes before they're made, prompt/context optimization, patch-scope safety gates, secret scanning, transaction rollback, an LLM cache/budget layer, and a built-in MCP server, all running locally with no cloud dependency.
 
-UACOS is **not a Goose clone or general chat agent**. Its product role is to act as the repo brain and safety gate underneath AI coding agents such as Goose, Claude Code, Codex, OpenClaw, Aider, Cline, or manual chat workflows.
+UACOS is **not a Goose clone or general chat agent**. Its product role is to act as the repo brain, agent-code coordination layer, and safety gate underneath AI coding agents such as Goose, Claude Code, Codex, OpenClaw, Aider, Cline, or manual chat workflows.
 
 ## Requirements
 
@@ -39,13 +39,14 @@ $ python -m uacos.cli auto --repo . --summary
 
 ## Product Workflows
 
-UACOS has three supported product workflows:
+UACOS has four supported product workflows:
 
 1. **Prepare Mode** — build repo graph, cache, memory, health reports, and compressed readiness evidence before AI edits.
 2. **Assist Mode** — give external AI agents bounded task context instead of letting them read the whole repository.
 3. **Guard Mode** — validate/apply patches through scope gates, secret scans, tests, checkpoints, and rollback.
+4. **Orchestrate Mode** — coordinate bounded `spec -> context -> delegate -> patch -> test -> record -> improve` loops without becoming the agent or applying patches outside Guard Mode.
 
-See [Product Workflows](docs/PRODUCT_WORKFLOWS.md) for the finite upgrade plan and MCP product contract.
+See [Product Workflows](docs/PRODUCT_WORKFLOWS.md) for the finite upgrade plan and MCP product/orchestration contracts.
 
 ## What you get
 
