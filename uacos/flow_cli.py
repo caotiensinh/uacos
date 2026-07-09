@@ -33,7 +33,7 @@ def workflow_reference() -> dict:
             },
             {
                 "name": "assist",
-                "intent": "Create bounded task context for an external AI agent.",
+                "intent": "Create bounded task context and explain why files were selected for an external AI agent.",
                 "equivalent_commands": [
                     "uacos impact --repo . --task '<task>'",
                     "uacos context-compressed --repo . --task '<task>' --max-tokens 6000",
@@ -105,9 +105,11 @@ def run_prepare(repo_root: Path, summary: bool = False, skip_performance: bool =
 def run_assist(repo_root: Path, task: str, max_tokens: int = 6000, max_files: int = 8, show_content: bool = False) -> dict:
     from uacos.impact.analyzer import impact_by_task
     from uacos.compression.engine import compressed_context
+    from uacos.impact.explainer import explain_selected_files
 
     impact = impact_by_task(repo_root, task)
     context = compressed_context(repo_root, task, max_tokens=max_tokens, max_files=max_files)
+    explanations = explain_selected_files(repo_root, task, context.get("selected_files", []), impact=impact)
     if isinstance(context, dict) and "content" in context and not show_content:
         context = {k: v for k, v in context.items() if k != "content"}
     status = "pass" if isinstance(context, dict) and context.get("status") in {"ok", "pass"} else "fail"
@@ -118,7 +120,8 @@ def run_assist(repo_root: Path, task: str, max_tokens: int = 6000, max_files: in
         "task": task,
         "impact": impact,
         "context": context,
-        "next_step": "give the context file/report to your AI agent, then validate its patch with uacos-flow guard",
+        "selection_explanations": explanations,
+        "next_step": "review selection_explanations, then give the context file/report to your AI agent and validate its patch with uacos-flow guard",
     }
 
 
