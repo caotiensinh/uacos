@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "uacos-self-benchmark-suite",
+  "description": "Repeatable dry benchmark suite for UACOS token/context efficiency and context quality signals. This does not require cloud LLMs.",
+  "suites": [
+    {
+      "id": "self_repo_token_efficiency",
+      "repo": ".",
+      "max_tokens": 3000,
+      "max_files": 4,
+      "skip_cache_probe": true,
+      "tasks": [
+        "add bounded orchestration contract docs",
+        "validate MCP orchestration loop tool responses"
+      ],
+      "quality_checks": [
+        {
+          "task": "add bounded orchestration contract docs",
+          "expected_keywords": ["orchestration", "contract", "docs"],
+          "must_not_contain": ["SECRET_KEY_DO_NOT_USE", "rm -rf /"]
+        },
+        {
+          "task": "validate MCP orchestration loop tool responses",
+          "expected_keywords": ["mcp", "loop", "tools"],
+          "must_not_contain": ["SECRET_KEY_DO_NOT_USE", "rm -rf /"]
+        }
+      ]
+    }
+  ],
+  "pass_thresholds": {
+    "min_task_success_rate": 1.0,
+    "min_context_quality_pass_rate": 0.5,
+    "min_average_savings_percent": 0.0
+  },
+  "method_notes": [
+    "Token values are estimates from UACOS local token estimator, not provider billing records.",
+    "The baseline is estimated from full raw impacted files selected by UACOS impact/compression, so it is conservative and repeatable.",
+    "A positive savings score alone does not prove task success; quality checks are tracked separately.",
+    "No 80-90% claim should be made unless this suite and real-repo benchmarks support it."
+  ]
+}

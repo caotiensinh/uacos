@@ -172,6 +172,7 @@ def main() -> int:
     checks.append(run("community_readiness_check", [sys.executable, "scripts/community_readiness_check.py"], timeout=60))
     checks.append(run("uacos_auto_check", [sys.executable, "-m", "uacos.cli", "auto", "--repo", ".", "--skip-performance", "--summary"], timeout=120))
     checks.append(run("uacos_performance_benchmark", [sys.executable, "scripts/uacos_performance_benchmark.py", "--repo", ".", "--task", "fix MCP SSE endpoint and docs cleanup", "--max-files", "3", "--max-tokens", "3000", "--summary", "--skip-cache-probe"], timeout=120))
+    checks.append(run("uacos_benchmark_suite", [sys.executable, "scripts/uacos_benchmark_suite.py", "--repo", ".", "--manifest", "evals/benchmark_suite.json", "--summary"], timeout=180))
     checks.append(run("eval_dry_run", [sys.executable, "scripts/eval_run.py", "--repo", ".", "--golden", "evals/golden_tasks.json"], timeout=120))
     checks.append(ollama_smoke_test())
     status = "pass" if all(c["ok"] for c in checks) else "fail"
