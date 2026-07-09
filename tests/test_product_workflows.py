@@ -6,20 +6,24 @@ def test_product_contract_positions_uacos_as_repo_brain_not_agent_clone():
     contract = get_product_contract()
 
     assert contract["status"] == "ok"
-    assert contract["positioning"]["category"] == "repo_brain_and_safety_gate"
+    assert contract["positioning"]["category"] == "repo_brain_orchestration_and_safety_gate"
     assert "a Goose clone" in contract["positioning"]["is_not"]
+    assert "an unbounded autonomous loop" in contract["positioning"]["is_not"]
     assert "Goose" in contract["positioning"]["integrates_with"]
+    assert "orchestration_contract" in contract
 
 
 def test_workflow_modes_are_finite_and_simple():
     modes = get_workflow_modes()
     names = [m["name"] for m in modes]
 
-    assert names == ["prepare", "assist", "guard"]
+    assert names == ["prepare", "assist", "guard", "orchestrate"]
     assert modes[0]["writes_code"] is False
     assert modes[1]["writes_code"] is False
     assert modes[2]["writes_code"] is True
     assert modes[2]["release_gate_required"] is True
+    assert modes[3]["writes_code"] == "only_through_guard_mode"
+    assert modes[3]["release_gate_required"] is True
 
 
 def test_upgrade_plan_is_bounded_to_four_sessions():
@@ -33,8 +37,12 @@ def test_upgrade_plan_is_bounded_to_four_sessions():
     assert all(row["evidence_required"] for row in plan)
 
 
-def test_mcp_exposes_product_contract_tool():
+def test_mcp_exposes_product_and_orchestration_tools():
     names = [tool["name"] for tool in tool_specs()]
 
     assert "product_contract" in names
+    assert "orchestration_contract" in names
+    assert "plan_orchestration_loop" in names
+    assert "loop_decision" in names
     assert names.index("product_contract") < names.index("status")
+    assert names.index("orchestration_contract") < names.index("status")
