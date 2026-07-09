@@ -183,6 +183,9 @@ Goal: prepare credible public or customer-facing proof.
 - [x] Added `docs/README.md` as the main documentation index.
 - [x] Added `docs/CURRENT_STATUS.md` as the current status snapshot.
 - [x] Simplified root `README.md` and moved detailed navigation into the documentation index.
+- [x] Added `docs/LANGUAGE_POLICY.md` for English-only repository content.
+- [x] Added `scripts/check_english_docs.py` and wired `english_language_check` into the release gate.
+- [x] Added tests proving the language check accepts English and flags Vietnamese/CJK text.
 
 ## Remaining evidence gaps
 
