@@ -19,6 +19,7 @@ UACOS is not a Goose clone and is not a general-purpose AI agent. The AI agent w
 | Benchmark evidence | Self/CI benchmark foundation complete; real multi-repo mounted benchmark pending |
 | Onboarding/usability | One-command setup, doctor, status, recipes, and example report complete |
 | Product proof package | Claim guide, benchmark template, case study template, and comparison matrix complete |
+| Documentation language | English-only policy and automated release-gate check added |
 
 ## Completed implementation phases
 
@@ -31,6 +32,18 @@ UACOS is not a Goose clone and is not a general-purpose AI agent. The AI agent w
 | Phase 5 | Context intelligence | Complete | CI `29023056924` passed Python 3.9/3.11/3.13 |
 | Phase 6 | Usability/onboarding | Complete | CI `29024138897` passed Python 3.9/3.11/3.13 |
 | Phase 7 | Product proof package | Complete | CI `29024685290` passed Python 3.9/3.11/3.13 |
+
+## Language policy
+
+Repository documentation and user-facing text should remain in English.
+
+Run:
+
+```bash
+python scripts/check_english_docs.py --repo . --summary
+```
+
+The release gate runs the same check as `english_language_check`. See [Language Policy](LANGUAGE_POLICY.md) for scope, allowed exceptions, and review rules.
 
 ## Main user workflows
 
