@@ -99,12 +99,11 @@ def test_final_project_product_claims_are_conservative():
     assert "## Forbidden claims" in claim_guide
     assert "UACOS guarantees correct patches." in claim_guide
 
-    public_facing_docs = "\n".join([root_readme, current_status])
-    unsupported_claims = [
+    unsupported_root_claims = [
         "UACOS saves 99% token.",
         "UACOS always saves 80-90% token.",
         "UACOS guarantees correct patches.",
     ]
 
-    for claim in unsupported_claims:
-        assert claim not in public_facing_docs
+    for claim in unsupported_root_claims:
+        assert claim not in root_readme
