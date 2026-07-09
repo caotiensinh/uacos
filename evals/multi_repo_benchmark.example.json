@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "name": "uacos-multi-repo-benchmark-example",
+  "description": "Example benchmark profile for real repositories. Optional repos are skipped when not mounted locally, so this file is safe to keep in the repo but should be run only when the target repos exist.",
+  "pass_thresholds": {
+    "min_task_success_rate": 1.0,
+    "min_context_quality_pass_rate": 0.5,
+    "min_average_savings_percent": 0.0,
+    "min_benchmarked_suite_count": 1
+  },
+  "method_notes": [
+    "This manifest is for local real-repo evidence collection, not release-gate CI.",
+    "Mount or clone target repositories next to UACOS, then adjust repo_path if needed.",
+    "99% may only describe full-repo input-context reduction on measured tasks, not total AI workflow token savings.",
+    "Public claims require benchmarked repos, task pass-rate evidence, and no skipped-profile-only results."
+  ],
+  "suites": [
+    {
+      "id": "uacos_self_repo",
+      "repo_label": "UACOS",
+      "repo": ".",
+      "required": true,
+      "max_tokens": 3000,
+      "max_files": 4,
+      "max_repo_files": 500,
+      "skip_cache_probe": true,
+      "tasks": [
+        "improve benchmark claim policy without changing patch gate",
+        "validate simplified workflow docs and CLI behavior"
+      ],
+      "quality_checks": [
+        {
+          "task": "improve benchmark claim policy without changing patch gate",
+          "expected_keywords": ["benchmark", "claim", "token"],
+          "must_not_contain": ["password", "secret_key"]
+        }
+      ]
+    },
+    {
+      "id": "bear_detector_repo",
+      "repo_label": "Bear Detector",
+      "repo_path": "../bear_detector",
+      "required": false,
+      "skip_if_missing": true,
+      "max_tokens": 4000,
+      "max_files": 6,
+      "max_repo_files": 800,
+      "skip_cache_probe": true,
+      "tasks": [
+        "trace animal event ingestion to map display and playback",
+        "validate admin and viewer separation for event workflow"
+      ],
+      "quality_checks": [
+        {
+          "task": "trace animal event ingestion to map display and playback",
+          "expected_keywords": ["event", "map", "playback"],
+          "must_not_contain": ["password", "secret_key"]
+        }
+      ]
+    },
+    {
+      "id": "rtsp_recorder_repo",
+      "repo_label": "RTSP Recorder",
+      "repo_path": "../rtsp_recorder",
+      "required": false,
+      "skip_if_missing": true,
+      "max_tokens": 4000,
+      "max_files": 6,
+      "max_repo_files": 800,
+      "skip_cache_probe": true,
+      "tasks": [
+        "trace 15 minute segment recording and upload retry behavior",
+        "validate local retention deletion only after successful upload"
+      ],
+      "quality_checks": [
+        {
+          "task": "trace 15 minute segment recording and upload retry behavior",
+          "expected_keywords": ["rtsp", "record", "upload"],
+          "must_not_contain": ["password", "secret_key"]
+        }
+      ]
+    },
+    {
+      "id": "superconnect_repo",
+      "repo_label": "SuperConnect",
+      "repo_path": "../superconnect",
+      "required": false,
+      "skip_if_missing": true,
+      "max_tokens": 4000,
+      "max_files": 6,
+      "max_repo_files": 800,
+      "skip_cache_probe": true,
+      "tasks": [
+        "trace video-aware tunnel path selection and relay fallback",
+        "validate node doctor output for CGNAT and video QoS"
+      ],
+      "quality_checks": [
+        {
+          "task": "trace video-aware tunnel path selection and relay fallback",
+          "expected_keywords": ["tunnel", "relay", "qos"],
+          "must_not_contain": ["password", "secret_key"]
+        }
+      ]
+    },
+    {
+      "id": "emstone_vms_repo",
+      "repo_label": "EMSTONE/VMS Integration",
+      "repo_path": "../emstone_vms",
+      "required": false,
+      "skip_if_missing": true,
+      "max_tokens": 4000,
+      "max_files": 6,
+      "max_repo_files": 800,
+      "skip_cache_probe": true,
+      "tasks": [
+        "trace AI Box RTSP forwarding and VMS channel allocation",
+        "validate event overlay recording workflow"
+      ],
+      "quality_checks": [
+        {
+          "task": "trace AI Box RTSP forwarding and VMS channel allocation",
+          "expected_keywords": ["rtsp", "vms", "channel"],
+          "must_not_contain": ["password", "secret_key"]
+        }
+      ]
+    }
+  ]
+}
