@@ -7,7 +7,7 @@ def test_workflow_reference_lists_product_modes():
 
     assert ref["status"] == "ok"
     assert ref["command"] == "uacos-flow"
-    assert names == ["setup", "doctor", "prepare", "assist", "guard", "apply-safe", "orchestrate", "benchmark"]
+    assert names == ["setup", "doctor", "status", "prepare", "assist", "guard", "apply-safe", "orchestrate", "benchmark"]
     assert "Existing uacos commands are preserved" in ref["backward_compatibility"]
 
 
@@ -34,6 +34,14 @@ def test_flow_parser_accepts_doctor_mode():
     args = parser.parse_args(["doctor", "--repo", "."])
 
     assert args.mode == "doctor"
+    assert args.repo == "."
+
+
+def test_flow_parser_accepts_status_mode():
+    parser = build_parser()
+    args = parser.parse_args(["status", "--repo", "."])
+
+    assert args.mode == "status"
     assert args.repo == "."
 
 
