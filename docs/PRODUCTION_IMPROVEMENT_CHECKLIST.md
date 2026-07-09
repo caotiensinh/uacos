@@ -19,16 +19,20 @@ Goal: make token-saving claims measurable and honest.
 
 ### Required items
 
-- [ ] Separate **full-repo input-context reduction** from **task-local context reduction**.
-- [ ] Add a clear claim policy for 95-99% input-context reduction.
-- [ ] Report whether a task meets the 99% input-context target.
-- [ ] Keep existing benchmark compatibility.
-- [ ] Add tests for benchmark claim classification.
+- [x] Separate **full-repo input-context reduction** from **task-local context reduction**.
+- [x] Add a clear claim policy for 95-99% input-context reduction.
+- [x] Report whether a task meets the 99% input-context target.
+- [x] Keep existing benchmark compatibility.
+- [x] Add tests for benchmark claim classification.
 
 ### Done means
 
-- Benchmark reports include full-repo baseline tokens, UACOS context tokens, task-local baseline tokens, and claim classification.
-- Release gate still passes.
+- [x] Benchmark reports include full-repo baseline tokens, UACOS context tokens, task-local baseline tokens, and claim classification.
+- [x] Release gate still passes.
+
+### Evidence
+
+- CI run `29003442656` passed compile, tests, self check, and release gate on Python 3.9, 3.11, and 3.13.
 
 ## Phase 2 — Real multi-repo benchmark suite
 
@@ -36,19 +40,27 @@ Goal: prove usefulness beyond the UACOS self-repo.
 
 ### Required items
 
-- [ ] Add manifest support for named external repos or mounted repo paths.
-- [ ] Add benchmark profiles for at least five real repos:
+- [x] Add manifest support for named external repos or mounted repo paths.
+- [x] Add benchmark profiles for at least five real repos:
+  - UACOS
   - Bear Detector
   - RTSP Recorder
   - SuperConnect
   - EMSTONE/VMS integration
-  - UACOS
-- [ ] Record per-repo pass rate, token reduction, retry count, and failed task examples.
-- [ ] Add a report that blocks public 80-90% or 99% claims if repo coverage is too narrow.
+- [x] Record per-repo benchmark coverage, skipped repos, token reduction, task success, and context quality.
+- [x] Add a report that blocks public 80-90% or 99% claims if repo coverage is too narrow.
+- [ ] Run the multi-repo benchmark against mounted real repos and archive the generated report.
+- [ ] Add real failed-task examples and retry counts from actual agent runs.
 
 ### Done means
 
-- A multi-repo benchmark can run locally and produce comparable reports.
+- [ ] A multi-repo benchmark can run locally and produce comparable reports against the actual target repos.
+
+### Current implementation status
+
+- `evals/multi_repo_benchmark.example.json` provides an example profile for the five target repos.
+- Optional repos can be skipped when not mounted, so CI can validate the profile shape without requiring private project repos.
+- This is a foundation step, not final proof. Public claims still require real mounted-repo runs.
 
 ## Phase 3 — External-agent integration test
 
