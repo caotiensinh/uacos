@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.1.0b4
+
+- Added the `uacos-flow` product workflow CLI with setup, doctor, status, prepare, assist, guard, apply-safe, orchestrate, and benchmark modes while preserving existing `uacos ...` commands.
+- Added task-bounded context intelligence: selected-file explanations, symbol context, route/API relationships, likely test mapping, and config/deployment risk visibility.
+- Added a guarded patch lifecycle with risk review, explicit scope checks, checkpointed apply, tests, automatic rollback, and last-run evidence.
+- Added bounded orchestration planning and repeatable benchmark evidence with claim controls that prevent estimated context reduction from being presented as unsupported total token savings.
+- Hardened the English-language release gate so Python comments/docstrings are checked without rejecting technically necessary runtime localization strings and Unicode fixtures; added regression coverage for both allowed and rejected cases.
+- Added release automation that only creates a GitHub release after the exact `main` commit completes the full CI workflow successfully, including the release gate. Beta versions are marked as prereleases and an existing version is never recreated.
+- Documented the independent community listing of UACOS in `awesome-cli-coding-agents` under Agent infrastructure without presenting it as certification or vendor endorsement.
+
 ## 4.1.0b3
 
 - Impact-aware planning: `build_context_pack()` (used by every adapter and by
