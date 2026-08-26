@@ -107,6 +107,12 @@ Do **not** claim 80-90% or 99% token savings unless a benchmark report directly 
 - `examples/reports/uacos_flow_status_example.json` for example status output
 - `uacos-flow` simplified product workflow command
 
+## Community listing
+
+UACOS is listed in [awesome-cli-coding-agents](https://github.com/bradAGI/awesome-cli-coding-agents) under **Agent infrastructure**. The collection maintainer added the listing during a code-focused re-review of previously closed submissions ([commit `885684c`](https://github.com/bradAGI/awesome-cli-coding-agents/commit/885684c7c1dfcac6d2ce09a3a0f35a0ea5a82b04)).
+
+This is a community-maintained project listing, not a certification or vendor endorsement.
+
 ## Documentation
 
 Use [docs/README.md](docs/README.md) as the main documentation index.
