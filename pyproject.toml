@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "uacos"
-version = "4.1.0b3"
-description = "Local-first code intelligence, auto context, cache, MCP, and release-gate tooling for software projects."
+version = "4.1.0b4"
+description = "Local-first repo intelligence, context compression, patch safety, MCP, and evidence tooling for AI coding workflows."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
   { name = "UACOS maintainers" }
 ]
-keywords = ["code-intelligence", "llm", "developer-tools", "mcp", "release-gate", "context-compression"]
+keywords = ["code-intelligence", "coding-agents", "context-compression", "developer-tools", "llm", "local-first", "mcp", "patch-safety", "release-gate"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
