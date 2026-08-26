@@ -1,31 +1,33 @@
 # UACOS Language Policy
 
-UACOS repository content must be written in English by default.
+UACOS repository prose must be written in English by default.
 
-This policy exists so the project can be reviewed, tested, published, and reused by developers outside the original conversation context.
+This policy exists so the project can be reviewed, tested, published, and reused by developers outside the original conversation context without removing technically necessary localization or Unicode support.
 
 ## Scope
 
-English-only applies to:
+English-first prose applies to:
 
 - root `README.md`
 - all files under `docs/`
 - examples and report templates
-- CLI help text and user-facing command output
-- test names and test assertions intended to document behavior
-- comments and docstrings added to source code
+- CLI help text and default user-facing command output
+- source-code comments and docstrings
+- test names and explanatory assertions intended to document behavior
 - PR titles, PR descriptions, and release notes
 
-## Allowed exceptions
+## Allowed technical exceptions
 
-Non-English text is allowed only when it is technically necessary, for example:
+Non-English text is allowed when the text itself is technically necessary, for example:
 
-- fixture data that intentionally tests Unicode handling
-- user-provided sample input needed for a parser or encoding test
+- runtime localization labels or translated UI strings
+- multilingual keyword tables used by parsing, search, classification, or extraction logic
+- fixture data that intentionally tests Unicode or localization behavior
+- user-provided sample input required for a parser or encoding test
 - external product names, organization names, or proper nouns
 - quoted protocol payloads where the original language is part of the test case
 
-Any exception should be isolated and explained in English.
+Keep exceptions isolated and explain their purpose in English when the reason is not obvious from the surrounding code.
 
 ## Automated check
 
@@ -37,7 +39,14 @@ python scripts/check_english_docs.py --repo . --summary
 
 The release gate also runs this check as `english_language_check`.
 
-The check scans repository text files for common non-English scripts and Vietnamese diacritics. It is conservative: if a technically necessary exception is needed, isolate it and explain the reason in English.
+The checker intentionally distinguishes repository prose from runtime data:
+
+- Python files: comments and real module/class/function docstrings are checked; ordinary runtime string literals are not scanned so localization and Unicode fixtures remain supported.
+- Markdown, JSON, TOML, YAML, text, INI, and CFG files: text is checked line by line.
+- An isolated technically necessary exception can be documented with `language-policy: allow-non-english` on the same line or immediately preceding line.
+- Isolated possessive proper names are accepted as proper-noun exceptions; ordinary non-English prose is still rejected.
+
+This is a conservative text-policy gate, not a language-detection model.
 
 ## Required style
 
@@ -49,14 +58,14 @@ Use clear technical English:
 - evidence-based claims
 - no unsupported marketing language
 
-## Forbidden in repository content
+## Forbidden in repository prose
 
-Do not add Vietnamese or other non-English prose to project documentation, code comments, CLI messages, PR descriptions, release notes, or user-facing examples.
+Do not add Vietnamese or other non-English prose to project documentation, code comments, docstrings, CLI messages, PR descriptions, release notes, or user-facing examples unless one of the technical exceptions above applies.
 
 Do not claim:
 
-- UACOS saves 99% token
-- UACOS always saves 80-90% token
+- UACOS saves 99% of tokens
+- UACOS always saves 80-90% of tokens
 - UACOS replaces AI coding agents
 - UACOS guarantees correct patches
 
@@ -66,13 +75,14 @@ unless a benchmark or validation report directly supports the exact claim.
 
 Before merging documentation or user-facing changes, check:
 
-- Is the new text in English?
+- Is new repository prose in English?
+- Is any non-English runtime text technically necessary and isolated?
 - Does `python scripts/check_english_docs.py --repo . --summary` pass?
 - Is the target reader clear?
-- Is the claim supported by evidence?
+- Is each public claim supported by evidence?
 - Is the limitation stated when needed?
 - Are links routed through `docs/README.md` when possible?
 
 ## Note for maintainers
 
-Conversation with maintainers may happen in another language, but committed repository content should remain English unless one of the allowed exceptions applies.
+Conversation with maintainers may happen in another language, but committed repository prose should remain English unless one of the allowed technical exceptions applies.

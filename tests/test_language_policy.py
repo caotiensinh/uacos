@@ -30,3 +30,62 @@ def test_language_check_flags_cjk_text(tmp_path):
 
     assert result["status"] == "fail"
     assert result["finding_count"] >= 1
+
+
+def test_language_check_allows_unicode_runtime_literals_in_python(tmp_path):
+    source = 'LABELS = {"ja": "\u65e5\u672c\u8a9e", "vi": "B\u1ea3ng \u0111i\u1ec1u khi\u1ec3n"}\n'
+    (tmp_path / "localization.py").write_text(source, encoding="utf-8")
+
+    result = scan_repo(tmp_path)
+
+    assert result["status"] == "pass"
+    assert result["finding_count"] == 0
+
+
+def test_language_check_flags_non_english_python_comment(tmp_path):
+    source = "# \u65e5\u672c\u8a9e\u306e\u30b3\u30e1\u30f3\u30c8\nVALUE = 1\n"
+    (tmp_path / "app.py").write_text(source, encoding="utf-8")
+
+    result = scan_repo(tmp_path)
+
+    assert result["status"] == "fail"
+    assert result["findings"][0]["line"] == 1
+
+
+def test_language_check_flags_non_english_python_docstring(tmp_path):
+    source = '"""\u65e5\u672c\u8a9e\u306e\u8aac\u660e\u3002"""\nVALUE = 1\n'
+    (tmp_path / "app.py").write_text(source, encoding="utf-8")
+
+    result = scan_repo(tmp_path)
+
+    assert result["status"] == "fail"
+    assert result["findings"][0]["line"] == 1
+
+
+def test_language_check_allows_isolated_possessive_proper_noun(tmp_path):
+    text = "## Setup for Chu\u1ed9t's LAN Ollama\n"
+    (tmp_path / "README.md").write_text(text, encoding="utf-8")
+
+    result = scan_repo(tmp_path)
+
+    assert result["status"] == "pass"
+    assert result["finding_count"] == 0
+
+
+def test_language_check_does_not_treat_non_english_prose_as_proper_noun(tmp_path):
+    text = "## L\u1ed7i h\u1ec7 th\u1ed1ng\n"
+    (tmp_path / "README.md").write_text(text, encoding="utf-8")
+
+    result = scan_repo(tmp_path)
+
+    assert result["status"] == "fail"
+
+
+def test_language_check_allows_explicit_next_line_exception(tmp_path):
+    text = "<!-- language-policy: allow-non-english proper noun -->\n## Setup for Chu\u1ed9t's LAN Ollama\n"
+    (tmp_path / "README.md").write_text(text, encoding="utf-8")
+
+    result = scan_repo(tmp_path)
+
+    assert result["status"] == "pass"
+    assert result["finding_count"] == 0

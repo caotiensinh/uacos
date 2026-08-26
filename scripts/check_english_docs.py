@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 import argparse
+import ast
+import io
 import json
 import re
+import tokenize
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,6 +38,8 @@ SKIP_DIRS = {
     "reports",
 }
 
+ALLOW_MARKER = "language-policy: allow-non-english"
+
 # Unicode ranges and escaped code points keep this checker compatible with the
 # repository English-only policy while still detecting common non-English prose.
 NON_ENGLISH_RE = re.compile(
@@ -60,6 +65,88 @@ def should_scan(path: Path, repo_root: Path) -> bool:
     return not any(part in SKIP_DIRS for part in rel.parts)
 
 
+def _is_allowed_line(lines: list[str], line_no: int) -> bool:
+    """Allow one explicitly documented exception on the marker line or next line."""
+    current = lines[line_no - 1] if 0 < line_no <= len(lines) else ""
+    previous = lines[line_no - 2] if line_no > 1 else ""
+    return ALLOW_MARKER in current or ALLOW_MARKER in previous
+
+
+def _is_allowed_proper_noun(line: str) -> bool:
+    """Allow an isolated possessive proper name such as a maintainer name.
+
+    The whole line is not exempt: exactly one whitespace-delimited token may
+    contain a detected character, and that token must look like a capitalized
+    possessive name. This keeps ordinary non-English prose detectable.
+    """
+    flagged_tokens = [token.strip("`*_#()[]{}.,:;!?\"") for token in line.split() if NON_ENGLISH_RE.search(token)]
+    if len(flagged_tokens) != 1:
+        return False
+    token = flagged_tokens[0]
+    return bool(token and token[0].isupper() and (token.endswith("'s") or token.endswith("’s")))
+
+
+def _finding(rel: str, line_no: int, line: str, match: re.Match[str]) -> dict:
+    return {
+        "file": rel,
+        "line": line_no,
+        "match": match.group(0),
+        "excerpt": line.strip()[:160],
+    }
+
+
+def _scan_line_numbers(rel: str, lines: list[str], line_numbers: set[int]) -> list[dict]:
+    findings = []
+    for line_no in sorted(line_numbers):
+        if line_no < 1 or line_no > len(lines) or _is_allowed_line(lines, line_no):
+            continue
+        line = lines[line_no - 1]
+        match = NON_ENGLISH_RE.search(line)
+        if match and not _is_allowed_proper_noun(line):
+            findings.append(_finding(rel, line_no, line, match))
+    return findings
+
+
+def _python_prose_lines(text: str) -> set[int]:
+    """Return Python line numbers that are comments or real docstrings.
+
+    Runtime string literals are intentionally excluded because UACOS contains
+    localization labels, multilingual keyword fixtures, and Unicode test data.
+    """
+    line_numbers: set[int] = set()
+
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(text).readline):
+            if token.type == tokenize.COMMENT:
+                line_numbers.add(token.start[0])
+    except (IndentationError, tokenize.TokenError):
+        # compileall/pytest own syntax validity. Keep the language check focused
+        # on prose that can be classified reliably.
+        pass
+
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return line_numbers
+
+    docstring_nodes = (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    for node in ast.walk(tree):
+        if not isinstance(node, docstring_nodes) or not node.body:
+            continue
+        first = node.body[0]
+        if not isinstance(first, ast.Expr):
+            continue
+        value = first.value
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+            continue
+        start = getattr(value, "lineno", getattr(first, "lineno", 0))
+        end = getattr(value, "end_lineno", start)
+        if start:
+            line_numbers.update(range(start, end + 1))
+
+    return line_numbers
+
+
 def scan_file(path: Path, repo_root: Path) -> list[dict]:
     rel = str(path.relative_to(repo_root)).replace("\\", "/")
     try:
@@ -67,17 +154,11 @@ def scan_file(path: Path, repo_root: Path) -> list[dict]:
     except OSError as exc:
         return [{"file": rel, "line": 0, "match": "<read-error>", "reason": str(exc)}]
 
-    findings = []
-    for line_no, line in enumerate(text.splitlines(), start=1):
-        match = NON_ENGLISH_RE.search(line)
-        if match:
-            findings.append({
-                "file": rel,
-                "line": line_no,
-                "match": match.group(0),
-                "excerpt": line.strip()[:160],
-            })
-    return findings
+    lines = text.splitlines()
+    if path.suffix.lower() == ".py":
+        return _scan_line_numbers(rel, lines, _python_prose_lines(text))
+
+    return _scan_line_numbers(rel, lines, set(range(1, len(lines) + 1)))
 
 
 def scan_repo(repo_root: Path) -> dict:
@@ -95,12 +176,17 @@ def scan_repo(repo_root: Path) -> dict:
         "files_scanned": files_scanned,
         "finding_count": len(findings),
         "findings": findings[:200],
-        "claim": "This is a conservative repository text check for common non-English scripts and Vietnamese diacritics. Allowed exceptions should be isolated and documented in English.",
+        "claim": (
+            "This is a conservative repository prose check for common non-English scripts and Vietnamese "
+            "diacritics. Python runtime string literals are excluded so localization and Unicode fixtures remain "
+            "supported; Python comments/docstrings and other text files are checked. Explicit technical exceptions "
+            f"may use the marker '{ALLOW_MARKER}'."
+        ),
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check repository text files for non-English prose markers.")
+    parser = argparse.ArgumentParser(description="Check repository prose for non-English markers.")
     parser.add_argument("--repo", default=".")
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args()
