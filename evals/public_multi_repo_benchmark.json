@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "name": "uacos-public-multi-repo-benchmark",
+  "description": "Repeatable public multi-repository benchmark pilot using UACOS plus two independent public repositories. This is evidence of multi-repo operation, not evidence for the private target-repository benchmark set.",
+  "pass_thresholds": {
+    "min_task_success_rate": 1.0,
+    "min_context_quality_pass_rate": 0.5,
+    "min_average_savings_percent": 0.0,
+    "min_benchmarked_suite_count": 3
+  },
+  "method_notes": [
+    "This profile runs against public repositories checked out at exact commits by GitHub Actions.",
+    "The benchmark demonstrates multi-repository context selection and compression behavior across three repositories.",
+    "It does not replace the pending benchmark against Bear Detector, RTSP Recorder, SuperConnect, and EMSTONE/VMS Integration.",
+    "99% may only describe full-repo input-context reduction on measured tasks, not total AI workflow token savings."
+  ],
+  "suites": [
+    {
+      "id": "uacos_self_repo",
+      "repo_label": "UACOS",
+      "repo": ".",
+      "required": true,
+      "max_tokens": 3000,
+      "max_files": 4,
+      "max_repo_files": 500,
+      "skip_cache_probe": true,
+      "tasks": [
+        "trace benchmark claim policy and multi-repo coverage safeguards",
+        "trace guarded patch apply rollback and lifecycle evidence"
+      ],
+      "quality_checks": [
+        {
+          "task": "trace benchmark claim policy and multi-repo coverage safeguards",
+          "expected_keywords": ["benchmark", "claim", "repo"],
+          "must_not_contain": ["SECRET_KEY_DO_NOT_USE", "rm -rf /"]
+        }
+      ]
+    },
+    {
+      "id": "lan_camera_viewer_public",
+      "repo_label": "LANCameraViewer",
+      "repo_path": "../LANCameraViewer",
+      "required": true,
+      "max_tokens": 4000,
+      "max_files": 6,
+      "max_repo_files": 800,
+      "skip_cache_probe": true,
+      "tasks": [
+        "trace RTSP adaptive realtime stream switching and reconnect behavior",
+        "trace one-command Windows install and diagnostic workflow"
+      ],
+      "quality_checks": [
+        {
+          "task": "trace RTSP adaptive realtime stream switching and reconnect behavior",
+          "expected_keywords": ["rtsp", "substream", "reconnect"],
+          "must_not_contain": ["SECRET_KEY_DO_NOT_USE", "rm -rf /"]
+        }
+      ]
+    },
+    {
+      "id": "cisco_devices_public",
+      "repo_label": "Cisco Devices Automation",
+      "repo_path": "../cisco_devices",
+      "required": true,
+      "max_tokens": 4000,
+      "max_files": 6,
+      "max_repo_files": 800,
+      "skip_cache_probe": true,
+      "tasks": [
+        "trace CBS250 context help pagination safety and write denial",
+        "trace deterministic validation to safety gate and audit evidence"
+      ],
+      "quality_checks": [
+        {
+          "task": "trace CBS250 context help pagination safety and write denial",
+          "expected_keywords": ["cbs250", "pagination", "write"],
+          "must_not_contain": ["SECRET_KEY_DO_NOT_USE", "rm -rf /"]
+        }
+      ]
+    }
+  ]
+}

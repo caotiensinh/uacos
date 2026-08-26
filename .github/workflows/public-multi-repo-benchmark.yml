@@ -1,0 +1,90 @@
+name: Public multi-repo benchmark
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "evals/public_multi_repo_benchmark.json"
+      - "scripts/uacos_benchmark_suite.py"
+      - "scripts/uacos_performance_benchmark.py"
+      - ".github/workflows/public-multi-repo-benchmark.yml"
+      - "docs/CURRENT_STATUS.md"
+      - "docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md"
+  push:
+    branches: [main]
+    paths:
+      - "evals/public_multi_repo_benchmark.json"
+      - "scripts/uacos_benchmark_suite.py"
+      - "scripts/uacos_performance_benchmark.py"
+      - ".github/workflows/public-multi-repo-benchmark.yml"
+      - "docs/CURRENT_STATUS.md"
+      - "docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out UACOS
+        uses: actions/checkout@v4
+        with:
+          path: uacos
+
+      - name: Check out LANCameraViewer
+        uses: actions/checkout@v4
+        with:
+          repository: caotiensinh/LANCameraViewer
+          path: LANCameraViewer
+
+      - name: Check out Cisco Devices Automation
+        uses: actions/checkout@v4
+        with:
+          repository: caotiensinh/cisco_devices
+          path: cisco_devices
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install UACOS
+        working-directory: uacos
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[test]
+
+      - name: Record benchmark source commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p uacos/reports
+          {
+            echo "{"
+            echo "  \"uacos\": \"$(git -C uacos rev-parse HEAD)\","
+            echo "  \"LANCameraViewer\": \"$(git -C LANCameraViewer rev-parse HEAD)\","
+            echo "  \"cisco_devices\": \"$(git -C cisco_devices rev-parse HEAD)\""
+            echo "}"
+          } > uacos/reports/public_multi_repo_sources.json
+
+      - name: Run public multi-repo benchmark
+        working-directory: uacos
+        run: |
+          python scripts/uacos_benchmark_suite.py \
+            --repo . \
+            --manifest evals/public_multi_repo_benchmark.json \
+            --report reports/public_multi_repo_benchmark_report.json \
+            --summary
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-multi-repo-benchmark-${{ github.sha }}
+          path: |
+            uacos/reports/public_multi_repo_benchmark_report.json
+            uacos/reports/public_multi_repo_sources.json
+          if-no-files-found: error
+          retention-days: 90
