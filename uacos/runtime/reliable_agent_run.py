@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from uacos.agent.harness import run_agent_harness
+from uacos.runtime.retry_policy import decide_retry
 from uacos.runtime.run_state import (
     TERMINAL,
     begin_iteration,
@@ -169,16 +170,6 @@ def run_reliable_agent_harness(
             )
             return
 
-        if adapter_status == "timeout":
-            transition_run(
-                repo_root,
-                durable_run_id,
-                "timed_out",
-                reason=attempt.get("failure_class") or "adapter_timeout",
-                evidence=evidence,
-                idempotency_key=f"iteration:{iteration}:timed_out",
-            )
-            return
         if adapter_status == "cancelled":
             transition_run(
                 repo_root,
@@ -200,24 +191,35 @@ def run_reliable_agent_harness(
             )
             return
 
-        if iteration >= max_iterations:
-            transition_run(
-                repo_root,
-                durable_run_id,
-                "failed",
-                reason=failure_class,
-                evidence=evidence,
-                idempotency_key=f"iteration:{iteration}:failed",
-            )
-        else:
+        decision = decide_retry(
+            failure_class,
+            iteration=iteration,
+            max_iterations=max_iterations,
+            no_progress_stalled=bool((attempt.get("no_progress") or {}).get("stalled") and iteration < max_iterations),
+        )
+        evidence["retry_decision"] = decision.to_dict()
+
+        if decision.action == "retry":
             transition_run(
                 repo_root,
                 durable_run_id,
                 "retrying",
-                reason=failure_class,
+                reason=decision.reason,
                 evidence=evidence,
                 idempotency_key=f"iteration:{iteration}:retrying",
             )
+            return
+
+        terminal_reason = decision.reason
+        terminal_status = "timed_out" if adapter_status == "timeout" and decision.reason == "max_iterations_exhausted" else "failed"
+        transition_run(
+            repo_root,
+            durable_run_id,
+            terminal_status,
+            reason=terminal_reason,
+            evidence=evidence,
+            idempotency_key=f"iteration:{iteration}:{terminal_status}",
+        )
 
     report = run_agent_harness(
         repo_root,
