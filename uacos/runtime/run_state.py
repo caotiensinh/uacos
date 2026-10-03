@@ -15,7 +15,7 @@ ALLOWED_TRANSITIONS = {
     "queued": {"running", "cancelled", "timed_out"},
     "running": {"awaiting_patch", "validating", "retrying", "passed", "failed", "blocked", "cancelled", "timed_out"},
     "awaiting_patch": {"validating", "retrying", "failed", "blocked", "cancelled", "timed_out"},
-    "validating": {"testing", "retrying", "failed", "blocked", "cancelled", "timed_out"},
+    "validating": {"testing", "retrying", "passed", "failed", "blocked", "cancelled", "timed_out"},
     "testing": {"retrying", "passed", "failed", "blocked", "cancelled", "timed_out"},
     "retrying": {"running", "failed", "blocked", "cancelled", "timed_out"},
     "passed": set(),
