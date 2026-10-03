@@ -13,6 +13,7 @@ from uacos.agent.provider_profiles import create_provider_adapter
 from uacos.agent.safe_execution import run_safe_agent_execution
 from uacos.benchmarks.comparative import BenchmarkThresholds, evaluate_comparative_benchmark
 from uacos.graph.builder import build_graph, load_graph
+from uacos.graph.roles import classify_source_path
 from uacos.impact.analyzer import smart_context
 from uacos.llm.hardened import estimate_tokens
 
@@ -53,6 +54,25 @@ def _safe_read(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError):
         return ""
+
+
+def _iter_text_files(root: Path) -> list[str]:
+    """Return repository text files for baseline modes, not only graph-parsed code.
+
+    Full-repo and grep are baselines for repository context, so limiting them to the
+    semantic graph would silently omit docs/config files that an ordinary agent could
+    inspect. Generated, vendor, ignored, and symlinked paths stay out to match the
+    source policy and avoid reading outside the benchmark workspace.
+    """
+    rows: list[str] = []
+    for path in root.rglob("*"):
+        if not path.is_file() or path.is_symlink() or path.suffix.lower() not in TEXT_SUFFIXES:
+            continue
+        rel = path.relative_to(root).as_posix()
+        if classify_source_path(rel) != "source":
+            continue
+        rows.append(rel)
+    return sorted(rows)
 
 
 def _task_terms(task: str) -> list[str]:
@@ -108,10 +128,8 @@ def _full_repo_context(root: Path, graph: dict, *, max_chars: int) -> dict:
     selected_files: list[str] = []
     used = 0
     truncated = False
-    for rel in sorted(graph.get("files", [])):
+    for rel in _iter_text_files(root):
         path = root / rel
-        if path.suffix.lower() not in TEXT_SUFFIXES:
-            continue
         text = _safe_read(path)
         if not text:
             continue
@@ -137,7 +155,7 @@ def _full_repo_context(root: Path, graph: dict, *, max_chars: int) -> dict:
 def _grep_context(root: Path, graph: dict, task: str, *, max_files: int, max_chars: int) -> dict:
     terms = _task_terms(task)
     candidates: list[tuple[int, str, str]] = []
-    for rel in graph.get("files", []):
+    for rel in _iter_text_files(root):
         path = root / rel
         text = _safe_read(path)
         if not text:
