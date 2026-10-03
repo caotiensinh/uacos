@@ -108,7 +108,12 @@ def assess_semantic_diff_risk(repo_root: Path, patch_text: str) -> dict:
             categories.add("file_deleted")
         if any(hint in normalized for hint in CRITICAL_PATH_HINTS):
             critical_paths.append(path)
-            score += 3
+            # Critical control-plane/configuration paths deserve enough weight
+            # that a structural change in the same patch crosses the high-risk
+            # review threshold. This keeps semantic review aligned with the
+            # existing patch-review policy without making path evidence alone
+            # an automatic block.
+            score += 4
             categories.add("critical_path")
         added_structures = sum(1 for line in fp.added_lines if any(pattern.search(line) for pattern in STRUCTURAL_ADDED_PATTERNS))
         if added_structures:
