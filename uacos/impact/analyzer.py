@@ -30,12 +30,23 @@ def _tokens(text: str) -> list[str]:
 
 
 def _task_symbol_candidates(text: str) -> list[str]:
-    """Extract likely symbol references while preserving qualified names."""
+    """Extract likely symbol references while preserving qualified names.
+
+    Components already carried by a qualified symbol are not emitted again as
+    broad bare queries. Without this, ``pkg.mod:target`` also queried ``pkg``,
+    ``mod`` and ``target`` independently, which could pull unrelated symbols from
+    the same module into the delivered context and inflate recall measurements.
+    """
     qualified = re.findall(
         r"[A-Za-z_][A-Za-z0-9_]*(?:(?::|\.)[A-Za-z_][A-Za-z0-9_]*)+",
         text,
     )
-    bare = _tokens(text)
+    qualified_parts = {
+        part.lower()
+        for token in qualified
+        for part in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", token)
+    }
+    bare = [token for token in _tokens(text) if token.lower() not in qualified_parts]
     ordered = []
     seen = set()
     for token in qualified + bare:
