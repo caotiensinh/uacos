@@ -8,7 +8,10 @@ from uacos.config import uacos_dir
 from uacos.ast_engine.language_backends import available_backends, parse_repo_languages
 
 
-KNOWN_EXTENSIONS = (".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go", ".java")
+KNOWN_EXTENSIONS = (
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go", ".java",
+    ".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx",
+)
 
 
 def utcnow() -> str:
@@ -122,6 +125,14 @@ def _resolve_go_import_module(record: dict) -> str:
     return str(record.get("module") or "").replace("/", ".")
 
 
+def _resolve_c_include_module(record: dict, rel_path: str) -> str:
+    module = str(record.get("module") or "").replace("/", ".").strip(".")
+    if not module:
+        return module
+    parent = _package_name(rel_path)
+    return f"{parent}.{module}".strip(".") if parent else module
+
+
 def _resolve_import_module(record: dict, doc: dict) -> str:
     language = str(doc.get("language") or "python")
     if language in {"javascript", "typescript"}:
@@ -132,6 +143,8 @@ def _resolve_import_module(record: dict, doc: dict) -> str:
         return _resolve_go_import_module(record)
     if language == "java":
         return str(record.get("module") or "")
+    if language in {"c", "cpp"}:
+        return _resolve_c_include_module(record, doc["path"])
     return _resolve_python_import_module(record, doc["path"])
 
 
@@ -225,7 +238,7 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
                 if doc.get("language") == "python" and record.get("kind") == "from" and record.get("name") and record.get("name") != "*":
                     import_name = f"{base_module}.{record['name']}" if base_module else str(record["name"])
                 dst = _import_to_file(import_name, module_to_file) or _import_to_file(base_module, module_to_file)
-                if not dst and doc.get("language") in {"go", "java"}:
+                if not dst and doc.get("language") in {"go", "java", "c", "cpp"}:
                     dst = _import_suffix_to_file(base_module, module_to_file)
                 if dst and dst != src:
                     key = (src, dst, import_name)
