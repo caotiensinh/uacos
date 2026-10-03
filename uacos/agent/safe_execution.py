@@ -9,6 +9,9 @@ from uacos.execution.test_runner import run_allowed_command
 from uacos.patching.engine import apply_patch, rollback_patch
 from uacos.patching.preconditions import capture_patch_preconditions, verify_patch_preconditions
 from uacos.config import uacos_dir
+from uacos.security.approval import verify_approval_record
+from uacos.security.patch_review import review_patch_text
+from uacos.security.policy import evaluate_patch_policy, load_policy
 
 
 def _extract_diff(text: str) -> str | None:
@@ -72,8 +75,10 @@ def run_safe_agent_execution(
     timeout_seconds: int = 120,
     max_files: int = 8,
     max_context_chars: int = 18000,
+    policy_path: Path | None = None,
+    approval_record: dict | None = None,
 ) -> dict:
-    """Run agent -> validate -> stale-check -> apply -> tests -> verified rollback/commit."""
+    """Run agent -> policy/approval -> stale-check -> apply -> tests -> verified rollback."""
     repo_root = repo_root.resolve()
     allowed_files = list(allowed_files or [])
     allowed_dirs = list(allowed_dirs or [])
@@ -96,6 +101,9 @@ def run_safe_agent_execution(
         "reason": harness["reason"],
         "run_id": harness["run_id"],
         "harness": harness,
+        "patch_review": None,
+        "policy_decision": None,
+        "approval_verification": None,
         "preconditions": None,
         "precondition_verification": None,
         "patch_apply": None,
@@ -118,6 +126,39 @@ def run_safe_agent_execution(
         result["reason"] = "validated_patch_missing"
         return result
 
+    # Policy is optional for backward compatibility. When configured it is
+    # enforced before any precondition capture or filesystem mutation.
+    if policy_path is not None:
+        review = review_patch_text(
+            patch_text,
+            allowed_files=allowed_files,
+            allowed_dirs=allowed_dirs,
+            tests=tests,
+            repo_root=repo_root,
+        )
+        result["patch_review"] = review
+        try:
+            policy = load_policy(Path(policy_path))
+            decision = evaluate_patch_policy(review, policy)
+        except Exception as exc:
+            result["status"] = "blocked"
+            result["reason"] = "policy_load_failed"
+            result["policy_decision"] = {"action": "deny", "error": f"{type(exc).__name__}: {exc}"}
+            return result
+        result["policy_decision"] = decision
+
+        if decision["action"] == "deny":
+            result["status"] = "blocked"
+            result["reason"] = "policy_denied"
+            return result
+        if decision["action"] == "approval_required":
+            approval_verification = verify_approval_record(approval_record, patch_text, decision)
+            result["approval_verification"] = approval_verification
+            if approval_verification.get("status") != "pass":
+                result["status"] = "blocked"
+                result["reason"] = "human_approval_required" if approval_record is None else "invalid_human_approval"
+                return result
+
     preconditions = capture_patch_preconditions(repo_root, patch_text)
     result["preconditions"] = preconditions
     if preconditions.get("status") != "pass":
@@ -125,8 +166,6 @@ def run_safe_agent_execution(
         result["reason"] = "patch_precondition_capture_failed"
         return result
 
-    # Verify immediately before mutation. This closes the window between agent
-    # reasoning/validation and filesystem mutation if another writer changed a target.
     precondition_verification = verify_patch_preconditions(repo_root, preconditions)
     result["precondition_verification"] = precondition_verification
     if precondition_verification.get("status") != "pass":
