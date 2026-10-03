@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import json
 from datetime import datetime, timezone
+
 from uacos.config import uacos_dir
-from uacos.ast_engine.parser import parse_repo_python
+from uacos.ast_engine.language_backends import available_backends, parse_repo_languages
+
+
+KNOWN_EXTENSIONS = (".py", ".js", ".jsx", ".ts", ".tsx")
 
 
 def utcnow() -> str:
@@ -18,14 +22,19 @@ def graph_dir(repo_root: Path) -> Path:
 
 
 def _module_name(rel_path: str) -> str:
-    rel = rel_path[:-3] if rel_path.endswith(".py") else rel_path
-    parts = [p for p in rel.replace("\\", "/").split("/") if p != "__init__"]
+    rel = rel_path.replace("\\", "/")
+    for ext in KNOWN_EXTENSIONS:
+        if rel.endswith(ext):
+            rel = rel[: -len(ext)]
+            break
+    parts = [p for p in rel.split("/") if p not in {"__init__", "index"}]
     return ".".join(parts)
 
 
 def _package_name(rel_path: str) -> str:
     module = _module_name(rel_path)
-    if rel_path.replace("\\", "/").endswith("/__init__.py") or rel_path == "__init__.py":
+    normalized = rel_path.replace("\\", "/")
+    if normalized.endswith("/__init__.py") or normalized == "__init__.py":
         return module
     return module.rsplit(".", 1)[0] if "." in module else ""
 
@@ -46,12 +55,11 @@ def _import_to_file(import_name: str, module_to_file: dict[str, str]) -> str | N
     return None
 
 
-def _resolve_import_module(record: dict, rel_path: str) -> str:
+def _resolve_python_import_module(record: dict, rel_path: str) -> str:
     module = str(record.get("module") or "")
     level = int(record.get("level") or 0)
     if level <= 0:
         return module
-
     package = _package_name(rel_path)
     parts = [p for p in package.split(".") if p]
     up = max(0, level - 1)
@@ -62,10 +70,35 @@ def _resolve_import_module(record: dict, rel_path: str) -> str:
     return ".".join(parts)
 
 
+def _resolve_js_import_module(record: dict, rel_path: str) -> str:
+    module = str(record.get("module") or "")
+    if not module.startswith("."):
+        return module.replace("/", ".")
+    parent = PurePosixPath(rel_path.replace("\\", "/")).parent
+    resolved = parent.joinpath(module)
+    parts: list[str] = []
+    for part in resolved.parts:
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+    joined = "/".join(parts)
+    return _module_name(joined)
+
+
+def _resolve_import_module(record: dict, doc: dict) -> str:
+    language = str(doc.get("language") or "python")
+    if language in {"javascript", "typescript"}:
+        return _resolve_js_import_module(record, doc["path"])
+    return _resolve_python_import_module(record, doc["path"])
+
+
 def _symbol_records(parsed: list[dict]) -> tuple[list[dict], dict[str, list[str]]]:
     symbols = []
     aliases: dict[str, list[str]] = {}
-
     for doc in parsed:
         module = _module_name(doc["path"])
         groups = [
@@ -90,11 +123,12 @@ def _symbol_records(parsed: list[dict]) -> tuple[list[dict], dict[str, list[str]
                     "lineno": item.get("lineno"),
                     "end_lineno": item.get("end_lineno"),
                     "language": doc.get("language", "python"),
+                    "backend": doc.get("backend"),
+                    "semantic_level": doc.get("semantic_level"),
                 }
                 if kind == "class":
                     record["bases"] = item.get("bases", [])
                 symbols.append(record)
-
                 for alias in {
                     symbol_id,
                     record["name"],
@@ -102,7 +136,6 @@ def _symbol_records(parsed: list[dict]) -> tuple[list[dict], dict[str, list[str]
                     f"{module}.{qname}" if module else qname,
                 }:
                     aliases.setdefault(alias, []).append(symbol_id)
-
     for key in list(aliases):
         aliases[key] = sorted(set(aliases[key]))
     return symbols, aliases
@@ -126,13 +159,11 @@ def _resolve_symbol(alias_map: dict[str, list[str]], module: str, name: str) -> 
 
 
 def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
-    parsed = parse_repo_python(repo_root, include_tests=include_tests)
+    parsed = parse_repo_languages(repo_root, include_tests=include_tests)
     module_to_file = {_module_name(d["path"]): d["path"] for d in parsed}
     symbols, symbol_aliases = _symbol_records(parsed)
     symbol_by_id = {row["id"]: row for row in symbols}
 
-    # Backward-compatible map. Canonical IDs are authoritative; ambiguous short
-    # aliases keep their first deterministic match instead of silently changing.
     symbol_to_file = {}
     file_symbols = {}
     for row in symbols:
@@ -145,14 +176,14 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
 
     file_edges = []
     seen_file_edges = set()
-    for d in parsed:
-        src = d["path"]
-        records = d.get("import_records") or []
+    for doc in parsed:
+        src = doc["path"]
+        records = doc.get("import_records") or []
         if records:
             for record in records:
-                base_module = _resolve_import_module(record, src)
+                base_module = _resolve_import_module(record, doc)
                 import_name = base_module
-                if record.get("kind") == "from" and record.get("name") and record.get("name") != "*":
+                if doc.get("language") == "python" and record.get("kind") == "from" and record.get("name") and record.get("name") != "*":
                     import_name = f"{base_module}.{record['name']}" if base_module else str(record["name"])
                 dst = _import_to_file(import_name, module_to_file) or _import_to_file(base_module, module_to_file)
                 if dst and dst != src:
@@ -165,21 +196,22 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
                             "kind": "import",
                             "import": import_name,
                             "level": record.get("level", 0),
+                            "language": doc.get("language"),
                         })
         else:
-            for imp in d.get("imports", []):
-                dst = _import_to_file(imp, module_to_file)
+            for imp in doc.get("imports", []):
+                dst = _import_to_file(str(imp).replace("/", "."), module_to_file)
                 if dst and dst != src:
                     key = (src, dst, imp)
                     if key not in seen_file_edges:
                         seen_file_edges.add(key)
-                        file_edges.append({"source": src, "target": dst, "kind": "import", "import": imp})
+                        file_edges.append({"source": src, "target": dst, "kind": "import", "import": imp, "language": doc.get("language")})
 
     call_edges = []
-    for d in parsed:
-        src_file = d["path"]
+    for doc in parsed:
+        src_file = doc["path"]
         module = _module_name(src_file)
-        for call in d.get("calls", []):
+        for call in doc.get("calls", []):
             callee = call.get("callee", "")
             target_symbol_id, resolution, candidate_count = _resolve_symbol(symbol_aliases, module, callee)
             target_file = symbol_by_id.get(target_symbol_id, {}).get("file") if target_symbol_id else None
@@ -197,7 +229,16 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
                 "resolution": resolution,
                 "candidate_count": candidate_count,
                 "lineno": call.get("lineno"),
+                "language": doc.get("language"),
             })
+
+    language_counts: dict[str, int] = {}
+    backend_counts: dict[str, int] = {}
+    for doc in parsed:
+        language = str(doc.get("language") or "unknown")
+        backend = str(doc.get("backend") or "unknown")
+        language_counts[language] = language_counts.get(language, 0) + 1
+        backend_counts[backend] = backend_counts.get(backend, 0) + 1
 
     graph = {
         "version": 2,
@@ -212,6 +253,7 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
         "file_symbols": file_symbols,
         "file_edges": file_edges,
         "call_edges": call_edges,
+        "language_backends": available_backends(),
         "stats": {
             "file_count": len(parsed),
             "file_edge_count": len(file_edges),
@@ -220,6 +262,8 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
             "ambiguous_call_edge_count": len([e for e in call_edges if e.get("resolution") == "ambiguous"]),
             "symbol_count": len(symbols),
             "parse_errors": len([d for d in parsed if d.get("parse_error")]),
+            "language_counts": language_counts,
+            "backend_counts": backend_counts,
         },
     }
     gd = graph_dir(repo_root)
