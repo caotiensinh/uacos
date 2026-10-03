@@ -281,7 +281,7 @@ def build_graph(repo_root: Path, include_tests: bool = True, incremental: bool =
         backend_counts[backend] = backend_counts.get(backend, 0) + 1
 
     graph = {
-        "version": 3,
+        "version": 2,
         "created_at": utcnow(),
         "repo": str(repo_root),
         "files": [d["path"] for d in parsed],
