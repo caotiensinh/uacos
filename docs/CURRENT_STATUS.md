@@ -165,7 +165,7 @@ Allowed only with an archived benchmark report:
 
 > UACOS achieved X% input-context reduction on Y measured tasks across Z repositories, with required-symbol recall of R% and task pass rate of N%.
 
-Not supported without direct evidence:
+Forbidden without direct evidence:
 
 - UACOS saves 99% of tokens.
 - UACOS always saves 80-90% of tokens.
