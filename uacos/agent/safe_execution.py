@@ -7,6 +7,7 @@ import hashlib
 from uacos.agent.harness import run_agent_harness
 from uacos.execution.test_runner import run_allowed_command
 from uacos.patching.engine import apply_patch, rollback_patch
+from uacos.patching.preconditions import capture_patch_preconditions, verify_patch_preconditions
 from uacos.config import uacos_dir
 
 
@@ -46,12 +47,16 @@ def _run_policy_tests(repo_root: Path, tests: list[str], timeout_seconds: int) -
     }
 
 
-def _rollback_after_test_failure(repo_root: Path, applied: dict) -> dict:
+def _rollback_after_test_failure(repo_root: Path, applied: dict, preconditions: dict) -> dict:
     engine_result = rollback_patch(repo_root, applied)
+    verification = verify_patch_preconditions(repo_root, preconditions)
+    engine_ok = engine_result.get("status") == "ok"
+    verification_ok = verification.get("status") == "pass"
     return {
-        "status": "rolled_back" if engine_result.get("status") == "ok" else "rollback_failed",
+        "status": "rolled_back" if engine_ok and verification_ok else "rollback_failed",
         "rolled_back": int(engine_result.get("rolled_back", 0)),
         "engine_result": engine_result,
+        "verification": verification,
     }
 
 
@@ -68,7 +73,7 @@ def run_safe_agent_execution(
     max_files: int = 8,
     max_context_chars: int = 18000,
 ) -> dict:
-    """Run agent -> validate -> apply -> policy-aware tests -> rollback/commit."""
+    """Run agent -> validate -> stale-check -> apply -> tests -> verified rollback/commit."""
     repo_root = repo_root.resolve()
     allowed_files = list(allowed_files or [])
     allowed_dirs = list(allowed_dirs or [])
@@ -91,6 +96,8 @@ def run_safe_agent_execution(
         "reason": harness["reason"],
         "run_id": harness["run_id"],
         "harness": harness,
+        "preconditions": None,
+        "precondition_verification": None,
         "patch_apply": None,
         "tests": None,
         "rollback": None,
@@ -109,6 +116,22 @@ def run_safe_agent_execution(
     if not patch_text:
         result["status"] = "failed"
         result["reason"] = "validated_patch_missing"
+        return result
+
+    preconditions = capture_patch_preconditions(repo_root, patch_text)
+    result["preconditions"] = preconditions
+    if preconditions.get("status") != "pass":
+        result["status"] = "failed"
+        result["reason"] = "patch_precondition_capture_failed"
+        return result
+
+    # Verify immediately before mutation. This closes the window between agent
+    # reasoning/validation and filesystem mutation if another writer changed a target.
+    precondition_verification = verify_patch_preconditions(repo_root, preconditions)
+    result["precondition_verification"] = precondition_verification
+    if precondition_verification.get("status") != "pass":
+        result["status"] = "failed"
+        result["reason"] = "stale_patch_precondition_failed"
         return result
 
     patch_path = _patch_file(repo_root, harness["run_id"], patch_text)
@@ -134,12 +157,15 @@ def run_safe_agent_execution(
         result["reason"] = "patch_applied_tests_passed"
         return result
 
-    rollback = _rollback_after_test_failure(repo_root, applied)
+    rollback = _rollback_after_test_failure(repo_root, applied, preconditions)
     result["rollback"] = rollback
     result["status"] = "failed"
     statuses = [row.get("status") for row in test_report["results"]]
     if rollback["status"] != "rolled_back":
-        result["reason"] = "rollback_failed"
+        if rollback.get("engine_result", {}).get("status") == "ok" and rollback.get("verification", {}).get("status") != "pass":
+            result["reason"] = "rollback_verification_failed"
+        else:
+            result["reason"] = "rollback_failed"
     elif "blocked" in statuses:
         result["reason"] = "test_command_blocked"
     elif "timeout" in statuses:
