@@ -66,13 +66,31 @@ def _language(kind: str):
     return Language(grammar.language())
 
 
-def _find_name(node: Any, source: bytes) -> str:
+def _declarator_name(node: Any, source: bytes) -> str:
+    """Resolve the declared symbol without descending into parameter names."""
     if node is None:
         return ""
     if node.type in {"identifier", "field_identifier", "operator_name", "destructor_name", "type_identifier"}:
         return _node_text(node, source).strip()
-    for child in reversed(node.children):
-        name = _find_name(child, source)
+
+    for field in ("name", "declarator"):
+        child = node.child_by_field_name(field)
+        if child is not None and child is not node:
+            name = _declarator_name(child, source)
+            if name:
+                return name
+
+    ignored = {
+        "parameter_list",
+        "argument_list",
+        "template_parameter_list",
+        "template_argument_list",
+        "requires_clause",
+    }
+    for child in node.children:
+        if child.type in ignored:
+            continue
+        name = _declarator_name(child, source)
         if name:
             return name
     return ""
@@ -135,7 +153,7 @@ def _parse_file(path: Path, repo_root: Path, language: str) -> dict:
 
         if node_type == "function_definition":
             declarator = node.child_by_field_name("declarator")
-            name = _find_name(declarator, raw)
+            name = _declarator_name(declarator, raw)
             if name:
                 qname = f"{current_type}.{name}" if current_type else name
                 row = {"name": name, "qname": qname, "lineno": _line(node), "end_lineno": _end_line(node), "kind": "method" if current_type else "function"}
