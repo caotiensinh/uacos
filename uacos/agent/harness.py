@@ -61,11 +61,15 @@ def run_agent_harness(
     max_files: int = 8,
     max_context_chars: int = 18000,
     cancel_check: Callable[[], bool] | None = None,
+    run_id: str | None = None,
+    pre_iteration_check: Callable[[int], tuple[str, str] | None] | None = None,
+    attempt_hook: Callable[[dict], None] | None = None,
 ) -> dict:
     """Run a bounded external-agent loop through one normalized contract.
 
-    Phase WS3-A is intentionally validate-only: agent patches are never applied here.
-    Transactional apply/tests are a separate runtime gate so adapters cannot bypass safety.
+    Agent patches are validate-only here. Transactional apply/tests remain a separate
+    safety gate. Runtime lifecycle hooks are optional so a durable orchestrator can
+    persist progress without changing adapter semantics or duplicating this loop.
     """
     if max_iterations < 1:
         raise ValueError("max_iterations_must_be_positive")
@@ -78,7 +82,7 @@ def run_agent_harness(
     build_graph(repo_root)
     context = smart_context(repo_root, task, max_files=max_files, max_chars=max_context_chars)
     attempts: list[dict] = []
-    run_id = AgentRunRequest(task=task, context="").run_id
+    effective_run_id = run_id or AgentRunRequest(task=task, context="").run_id
     final_status = "failed"
     final_reason = "max_iterations_exhausted"
 
@@ -88,13 +92,19 @@ def run_agent_harness(
             final_reason = "cancel_requested"
             break
 
+        if pre_iteration_check:
+            stop = pre_iteration_check(iteration)
+            if stop:
+                final_status, final_reason = stop
+                break
+
         request = AgentRunRequest(
             task=task,
             context=context["content"],
             allowed_files=allowed_files,
             allowed_dirs=allowed_dirs,
             tests=tests,
-            run_id=run_id,
+            run_id=effective_run_id,
             iteration=iteration,
             timeout_seconds=timeout_seconds,
             metadata={
@@ -159,16 +169,18 @@ def run_agent_harness(
             failure_class = "no_patch"
             final_reason = "no_patch"
 
-        attempts.append(
-            {
-                "iteration": iteration,
-                "status": attempt_status,
-                "adapter_result": result.to_dict(),
-                "patch_present": bool(patch),
-                "patch_validation": validation,
-                "failure_class": failure_class,
-            }
-        )
+        attempt = {
+            "iteration": iteration,
+            "status": attempt_status,
+            "adapter_result": result.to_dict(),
+            "patch_present": bool(patch),
+            "patch_validation": validation,
+            "failure_class": failure_class,
+        }
+        attempts.append(attempt)
+        if attempt_hook:
+            attempt_hook(attempt)
+
         if final_status == "passed":
             break
         if result.status in {"cancelled", "blocked"}:
@@ -186,7 +198,7 @@ def run_agent_harness(
     report = {
         "status": final_status,
         "reason": final_reason,
-        "run_id": run_id,
+        "run_id": effective_run_id,
         "task": task,
         "adapter": {
             "name": str(getattr(adapter, "name", type(adapter).__name__)),
