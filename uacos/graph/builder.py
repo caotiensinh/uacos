@@ -8,7 +8,7 @@ from uacos.config import uacos_dir
 from uacos.ast_engine.language_backends import available_backends, parse_repo_languages
 
 
-KNOWN_EXTENSIONS = (".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go")
+KNOWN_EXTENSIONS = (".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go", ".java")
 
 
 def utcnow() -> str:
@@ -53,6 +53,17 @@ def _import_to_file(import_name: str, module_to_file: dict[str, str]) -> str | N
             return module_to_file[candidate]
         parts.pop()
     return None
+
+
+def _import_suffix_to_file(import_name: str, module_to_file: dict[str, str]) -> str | None:
+    if not import_name:
+        return None
+    matches = sorted({
+        path
+        for module, path in module_to_file.items()
+        if module == import_name or module.endswith(f".{import_name}")
+    })
+    return matches[0] if len(matches) == 1 else None
 
 
 def _resolve_python_import_module(record: dict, rel_path: str) -> str:
@@ -119,6 +130,8 @@ def _resolve_import_module(record: dict, doc: dict) -> str:
         return _resolve_rust_import_module(record, doc["path"])
     if language == "go":
         return _resolve_go_import_module(record)
+    if language == "java":
+        return str(record.get("module") or "")
     return _resolve_python_import_module(record, doc["path"])
 
 
@@ -212,12 +225,8 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
                 if doc.get("language") == "python" and record.get("kind") == "from" and record.get("name") and record.get("name") != "*":
                     import_name = f"{base_module}.{record['name']}" if base_module else str(record["name"])
                 dst = _import_to_file(import_name, module_to_file) or _import_to_file(base_module, module_to_file)
-                if not dst and doc.get("language") == "go":
-                    suffixes = base_module.split(".")
-                    for index in range(1, len(suffixes)):
-                        dst = _import_to_file(".".join(suffixes[index:]), module_to_file)
-                        if dst:
-                            break
+                if not dst and doc.get("language") in {"go", "java"}:
+                    dst = _import_suffix_to_file(base_module, module_to_file)
                 if dst and dst != src:
                     key = (src, dst, import_name)
                     if key not in seen_file_edges:
