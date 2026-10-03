@@ -8,7 +8,7 @@ from uacos.config import uacos_dir
 from uacos.ast_engine.language_backends import available_backends, parse_repo_languages
 
 
-KNOWN_EXTENSIONS = (".py", ".js", ".jsx", ".ts", ".tsx")
+KNOWN_EXTENSIONS = (".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go")
 
 
 def utcnow() -> str:
@@ -89,10 +89,36 @@ def _resolve_js_import_module(record: dict, rel_path: str) -> str:
     return _module_name(joined)
 
 
+def _resolve_rust_import_module(record: dict, rel_path: str) -> str:
+    module = str(record.get("module") or "").strip()
+    module = module.replace("::", ".")
+    for prefix in ("crate.", "self."):
+        if module.startswith(prefix):
+            module = module[len(prefix) :]
+    if module.startswith("super."):
+        parent = _package_name(rel_path)
+        while module.startswith("super."):
+            module = module[len("super.") :]
+            parent = parent.rsplit(".", 1)[0] if "." in parent else ""
+        return f"{parent}.{module}".strip(".")
+    root = rel_path.replace("\\", "/").split("/", 1)[0]
+    if root and root not in {Path(rel_path).name}:
+        return f"{root}.{module}".strip(".")
+    return module
+
+
+def _resolve_go_import_module(record: dict) -> str:
+    return str(record.get("module") or "").replace("/", ".")
+
+
 def _resolve_import_module(record: dict, doc: dict) -> str:
     language = str(doc.get("language") or "python")
     if language in {"javascript", "typescript"}:
         return _resolve_js_import_module(record, doc["path"])
+    if language == "rust":
+        return _resolve_rust_import_module(record, doc["path"])
+    if language == "go":
+        return _resolve_go_import_module(record)
     return _resolve_python_import_module(record, doc["path"])
 
 
@@ -186,6 +212,12 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
                 if doc.get("language") == "python" and record.get("kind") == "from" and record.get("name") and record.get("name") != "*":
                     import_name = f"{base_module}.{record['name']}" if base_module else str(record["name"])
                 dst = _import_to_file(import_name, module_to_file) or _import_to_file(base_module, module_to_file)
+                if not dst and doc.get("language") == "go":
+                    suffixes = base_module.split(".")
+                    for index in range(1, len(suffixes)):
+                        dst = _import_to_file(".".join(suffixes[index:]), module_to_file)
+                        if dst:
+                            break
                 if dst and dst != src:
                     key = (src, dst, import_name)
                     if key not in seen_file_edges:
