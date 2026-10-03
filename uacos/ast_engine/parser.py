@@ -4,6 +4,7 @@ from pathlib import Path
 import ast
 import hashlib
 
+
 def _name(node) -> str:
     if isinstance(node, ast.Name):
         return node.id
@@ -18,6 +19,7 @@ def _name(node) -> str:
         return str(node.value)
     return ""
 
+
 class PythonAstVisitor(ast.NodeVisitor):
     def __init__(self):
         self.functions = []
@@ -25,6 +27,7 @@ class PythonAstVisitor(ast.NodeVisitor):
         self.classes = []
         self.methods = []
         self.imports = []
+        self.import_records = []
         self.calls = []
         self.symbol_locations = []
         self.current_class = None
@@ -33,20 +36,47 @@ class PythonAstVisitor(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import):
         for alias in node.names:
             self.imports.append(alias.name)
+            self.import_records.append({
+                "kind": "import",
+                "module": alias.name,
+                "name": None,
+                "alias": alias.asname,
+                "level": 0,
+                "lineno": getattr(node, "lineno", None),
+            })
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom):
         mod = node.module or ""
         for alias in node.names:
             self.imports.append(f"{mod}.{alias.name}" if mod else alias.name)
+            self.import_records.append({
+                "kind": "from",
+                "module": mod,
+                "name": alias.name,
+                "alias": alias.asname,
+                "level": int(getattr(node, "level", 0) or 0),
+                "lineno": getattr(node, "lineno", None),
+            })
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef):
         prev_class = self.current_class
         self.current_class = node.name
         bases = [_name(b) for b in node.bases if _name(b)]
-        self.classes.append({"name": node.name, "lineno": node.lineno, "bases": bases})
-        self.symbol_locations.append({"symbol": node.name, "kind": "class", "lineno": node.lineno})
+        item = {
+            "name": node.name,
+            "lineno": node.lineno,
+            "end_lineno": getattr(node, "end_lineno", node.lineno),
+            "bases": bases,
+        }
+        self.classes.append(item)
+        self.symbol_locations.append({
+            "symbol": node.name,
+            "kind": "class",
+            "lineno": node.lineno,
+            "end_lineno": getattr(node, "end_lineno", node.lineno),
+        })
         self.generic_visit(node)
         self.current_class = prev_class
 
@@ -61,14 +91,26 @@ class PythonAstVisitor(ast.NodeVisitor):
         qname = f"{self.current_class}.{node.name}" if self.current_class else node.name
         self.current_function = qname
         args = [a.arg for a in node.args.args]
-        item = {"name": node.name, "qname": qname, "lineno": node.lineno, "args": args}
+        item = {
+            "name": node.name,
+            "qname": qname,
+            "lineno": node.lineno,
+            "end_lineno": getattr(node, "end_lineno", node.lineno),
+            "args": args,
+            "async": bool(is_async),
+        }
         if self.current_class:
             self.methods.append(item)
         elif is_async:
             self.async_functions.append(item)
         else:
             self.functions.append(item)
-        self.symbol_locations.append({"symbol": qname, "kind": "function", "lineno": node.lineno})
+        self.symbol_locations.append({
+            "symbol": qname,
+            "kind": "function",
+            "lineno": node.lineno,
+            "end_lineno": getattr(node, "end_lineno", node.lineno),
+        })
         self.generic_visit(node)
         self.current_function = prev_function
 
@@ -81,6 +123,7 @@ class PythonAstVisitor(ast.NodeVisitor):
                 "lineno": getattr(node, "lineno", None),
             })
         self.generic_visit(node)
+
 
 def parse_python_file(path: Path, repo_root: Path | None = None) -> dict:
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -96,6 +139,7 @@ def parse_python_file(path: Path, repo_root: Path | None = None) -> dict:
         "classes": [],
         "methods": [],
         "imports": [],
+        "import_records": [],
         "calls": [],
         "symbol_locations": [],
         "parse_error": None,
@@ -110,6 +154,7 @@ def parse_python_file(path: Path, repo_root: Path | None = None) -> dict:
             "classes": visitor.classes,
             "methods": visitor.methods,
             "imports": sorted(set(visitor.imports)),
+            "import_records": visitor.import_records,
             "calls": visitor.calls,
             "symbol_locations": visitor.symbol_locations,
         })
@@ -118,6 +163,7 @@ def parse_python_file(path: Path, repo_root: Path | None = None) -> dict:
     except Exception as exc:
         result["parse_error"] = {"type": type(exc).__name__, "message": str(exc)}
     return result
+
 
 def parse_repo_python(repo_root: Path, include_tests: bool = True) -> list[dict]:
     docs = []
