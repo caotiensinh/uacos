@@ -4,74 +4,114 @@
 ![License](https://img.shields.io/github/license/caotiensinh/uacos)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 
-UACOS is a local-first repo brain, context-compression layer, orchestration planner, and patch safety/evidence gate for AI coding workflows.
+UACOS is a local-first reliability, context, and safety runtime for AI coding agents.
 
-UACOS is **not a Goose clone or general chat agent**. The AI coding agent proposes or writes code. UACOS prepares bounded context, validates patch scope/risk, supports guarded apply/rollback, records evidence, and prevents unsupported product claims.
+UACOS is **not a Goose clone or general chat/coding agent**. External agents propose changes. UACOS prepares bounded context, validates semantic scope/risk, enforces policy and approval, applies changes through guarded transactions, runs verification, retries bounded failures, and records durable evidence.
 
 ## Start here
 
-- [Documentation Index](docs/README.md) — organized map of all project documentation.
-- [Current Status](docs/CURRENT_STATUS.md) — completed phases, CI evidence, maturity, and remaining evidence gaps.
-- [Production Improvement Checklist](docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md) — finite roadmap and completion evidence.
-- [Strategic Status](docs/STRATEGIC_STATUS.md) — product positioning, Goose comparison, and maturity estimate.
-- [Language Policy](docs/LANGUAGE_POLICY.md) — English-only repository content policy and automated release-gate check.
+- [Documentation Index](docs/README.md)
+- [Current Status](docs/CURRENT_STATUS.md)
+- [Production Improvement Checklist](docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md)
+- [Final Closure Checklist](docs/FINAL_CLOSURE_CHECKLIST.md)
+- [Strategic Status](docs/STRATEGIC_STATUS.md)
+- [Language Policy](docs/LANGUAGE_POLICY.md)
 
 ## Requirements
 
 - Python 3.9+
 - Optional: Ollama for local real-model evaluation
+- Optional: Codex CLI, Claude Code, or Goose for real-provider E2E; availability is never assumed
 
-## Quick Start
+## Three-step workflow
+
+### 1. Initialize and inspect
 
 ```bash
 python -m pip install -e .
 uacos-flow setup --repo . --task "fix login bug safely"
 uacos-flow doctor --repo .
-uacos-flow status --repo .
 ```
 
-Expected output:
-
-```json
-{
-  "status": "pass",
-  "mode": "setup",
-  "quick_commands": [
-    "uacos-flow doctor --repo .",
-    "uacos-flow assist --repo . --task \"fix login bug safely\" --max-tokens 6000"
-  ]
-}
-```
-
-## Main workflow
+### 2. Build bounded context
 
 ```bash
-uacos-flow assist --repo . --task "fix MCP docs" --max-tokens 6000
-uacos-flow guard --repo . --patch change.diff --task "fix MCP docs" --allowed-file docs/PRODUCT_WORKFLOWS.md --test "pytest -q"
-uacos-flow apply-safe --repo . --patch change.diff --allowed-file docs/PRODUCT_WORKFLOWS.md --test "pytest -q" --yes
+uacos-flow assist --repo . --task "fix login bug safely" --max-tokens 6000
 ```
 
-## Other useful commands
+### 3. Guard and apply verified changes
+
+```bash
+uacos-flow guard \
+  --repo . \
+  --patch change.diff \
+  --task "fix login bug safely" \
+  --allowed-file app/auth.py \
+  --test "pytest -q"
+
+uacos-flow apply-safe \
+  --repo . \
+  --patch change.diff \
+  --allowed-file app/auth.py \
+  --test "pytest -q" \
+  --yes
+```
+
+Existing `uacos ...` commands remain available for lower-level and backward-compatible workflows.
+
+## Core capabilities
+
+- Multi-language semantic graph: Python, JavaScript/TypeScript, Rust, Go, Java, C, and C++.
+- Canonical symbols, cross-file imports, calls, inheritance/interfaces, route/service/data relationships, and test/source relationships.
+- Evidence-weighted context selection with symbol/subgraph slicing and dynamic budgets.
+- Durable agent runtime with resume, retry policy, no-progress detection, cancellation/deadlines, and replay.
+- Semantic diff risk, stale-patch preconditions, YAML policy, patch-bound human approval, guarded apply/test/rollback, and rollback verification.
+- Real HTTP JSON-RPC MCP client with timeout/payload bounds, pagination guards, request-id validation, and localhost network E2E.
+- Evidence-first real-agent E2E runner for Codex CLI, Claude Code, and Goose when explicitly installed/configured.
+- Comparative ground-truth benchmark evaluator for `full_repo` vs `grep` vs `uacos`.
+- Machine-checkable final closure gate that keeps implementation readiness separate from real-provider and benchmark evidence.
+
+## Useful commands
 
 ```bash
 uacos-flow list
+uacos-flow status --repo .
 uacos-flow prepare --repo . --summary
 uacos-flow orchestrate --spec "upgrade safely until tests pass" --agent goose --test "pytest -q" --max-iterations 3
 uacos-flow benchmark --repo . --manifest evals/benchmark_suite.json
+python scripts/provider_readiness.py
+python scripts/final_closure_check.py --repo .
 ```
 
-Existing `uacos ...` commands remain available and backward compatible.
+## Evidence and claims
 
-## Supported product workflows
+The repository separates **implementation tests** from **real-world evidence**.
 
-1. **Setup Mode** — one-command local setup: bootstrap, graph, cache, scripts, and actionable doctor.
-2. **Doctor Mode** — user-actionable readiness status with concrete next commands.
-3. **Status Mode** — terminal/dashboard-friendly readiness and evidence summary.
-4. **Prepare Mode** — repo graph, cache, memory, health reports, and compressed readiness evidence before AI edits.
-5. **Assist Mode** — bounded task context, selected-file explanations, symbol context, route/API graph, test suggestions, and config-risk review.
-6. **Guard Mode** — patch scope gates, secret scans, risk review, and optional task alignment without applying code.
-7. **Apply-safe Mode** — checkpoint, tests, auto-rollback, and last-run evidence.
-8. **Orchestrate Mode** — bounded `spec -> context -> delegate -> patch -> test -> record -> improve` planning without becoming the agent.
+A fixture, mock, binary probe, or localhost contract test must not be presented as a successful real-provider run. Real Agent E2E is complete only when an installed/configured provider actually executes and its archived evidence reports `status=passed`.
+
+Comparative benchmark claims require real observations using the same provider/model for all comparison modes, at least three repeats per task/mode, and explicit ground truth.
+
+Safe baseline claim:
+
+> UACOS reduces unnecessary repository context sent to AI coding agents by selecting task-relevant files and validates candidate changes through local reliability and safety gates.
+
+Do **not** claim 80-90% or 99% token savings unless an archived benchmark directly supports the exact statement.
+
+## Evidence outputs
+
+Depending on the workflow, UACOS writes evidence including:
+
+- `reports/uacos_performance_report.json`
+- `reports/uacos_benchmark_suite_report.json`
+- `reports/release_gate_report.json`
+- `reports/provider_readiness.json`
+- `reports/real-agent-e2e/summary.json`
+- `reports/comparative_ground_truth_benchmark.json`
+- `reports/final_closure_report.json`
+- `.uacos/real_agent_e2e/`
+- `.uacos/run_state/`
+- `.uacos/replay/`
+- `.uacos/patch_lifecycle/latest_patch_lifecycle_report.json`
 
 ## Product proof package
 
@@ -82,36 +122,9 @@ Use these before publishing claims or customer-facing material:
 - [Case Study Template](docs/CASE_STUDY_TEMPLATE.md)
 - [Agent Comparison Matrix](docs/AGENT_COMPARISON_MATRIX.md)
 
-## Evidence and claims
-
-Run the repeatable benchmark suite before making public savings claims:
-
-```bash
-python scripts/uacos_benchmark_suite.py --repo . --manifest evals/benchmark_suite.json --summary
-```
-
-Safe baseline claim:
-
-> UACOS reduces unnecessary repository context sent to AI coding agents by selecting task-relevant files, compressing context, and validating changes through local safety gates.
-
-Do **not** claim 80-90% or 99% token savings unless a benchmark report directly supports that exact claim.
-
-## What you get
-
-- `reports/uacos_performance_report.json` for token/context estimates
-- `reports/uacos_benchmark_suite_report.json` for repeatable benchmark evidence
-- `reports/uacos_auto_report.json` for Auto Mode summary
-- `reports/release_gate_report.json` for release readiness checks
-- `.uacos/patch_lifecycle/latest_patch_lifecycle_report.json` for the latest safe-apply evidence
-- `.uacos/scripts/` convenience dashboard launchers from `uacos-flow setup`
-- `examples/reports/uacos_flow_status_example.json` for example status output
-- `uacos-flow` simplified product workflow command
-
 ## Community listing
 
-UACOS is listed in [awesome-cli-coding-agents](https://github.com/bradAGI/awesome-cli-coding-agents) under **Agent infrastructure**. The collection maintainer added the listing during a code-focused re-review of previously closed submissions ([commit `885684c`](https://github.com/bradAGI/awesome-cli-coding-agents/commit/885684c7c1dfcac6d2ce09a3a0f35a0ea5a82b04)).
-
-This is a community-maintained project listing, not a certification or vendor endorsement.
+UACOS is listed in [awesome-cli-coding-agents](https://github.com/bradAGI/awesome-cli-coding-agents) under **Agent infrastructure**. This is a community-maintained project listing, not a certification or vendor endorsement.
 
 ## Documentation
 
