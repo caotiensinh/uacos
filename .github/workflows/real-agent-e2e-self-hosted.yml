@@ -6,7 +6,9 @@ on:
     paths:
       - 'uacos/agent/real_e2e.py'
       - 'scripts/run_real_agent_e2e.py'
+      - 'scripts/provider_readiness.py'
       - 'tests/test_real_agent_e2e_runner.py'
+      - 'tests/test_provider_readiness.py'
       - '.github/workflows/real-agent-e2e-self-hosted.yml'
   workflow_dispatch:
     inputs:
@@ -30,12 +32,24 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .[test]
       - name: Runner contract tests
-        run: python -m pytest -q tests/test_real_agent_e2e_runner.py
+        run: python -m pytest -q tests/test_real_agent_e2e_runner.py tests/test_provider_readiness.py
+      - name: Provider readiness diagnostic
+        env:
+          UACOS_CODEX_ARGV_JSON: ${{ secrets.UACOS_CODEX_ARGV_JSON }}
+          UACOS_CLAUDE_CODE_ARGV_JSON: ${{ secrets.UACOS_CLAUDE_CODE_ARGV_JSON }}
+          UACOS_GOOSE_ARGV_JSON: ${{ secrets.UACOS_GOOSE_ARGV_JSON }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/provider_readiness.py
       - name: Probe and execute configured real providers
         env:
           UACOS_CODEX_ARGV_JSON: ${{ secrets.UACOS_CODEX_ARGV_JSON }}
           UACOS_CLAUDE_CODE_ARGV_JSON: ${{ secrets.UACOS_CLAUDE_CODE_ARGV_JSON }}
           UACOS_GOOSE_ARGV_JSON: ${{ secrets.UACOS_GOOSE_ARGV_JSON }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -50,6 +64,7 @@ jobs:
         with:
           name: real-agent-e2e-${{ github.run_id }}
           path: |
+            reports/provider_readiness.json
             reports/real-agent-e2e/
             **/.uacos/real_agent_e2e/
           if-no-files-found: warn
