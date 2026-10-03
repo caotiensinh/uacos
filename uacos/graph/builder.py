@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from uacos.config import uacos_dir
 from uacos.ast_engine.language_backends import available_backends, parse_repo_languages
 from uacos.graph.inheritance import build_inheritance_edges
+from uacos.graph.incremental import incremental_parse_repo
+from uacos.graph.roles import classify_source_path, semantic_file_role
+from uacos.graph.topology import build_architecture_edges, build_test_dependency_edges
 
 
 KNOWN_EXTENSIONS = (
@@ -62,11 +65,7 @@ def _import_to_file(import_name: str, module_to_file: dict[str, str]) -> str | N
 def _import_suffix_to_file(import_name: str, module_to_file: dict[str, str]) -> str | None:
     if not import_name:
         return None
-    matches = sorted({
-        path
-        for module, path in module_to_file.items()
-        if module == import_name or module.endswith(f".{import_name}")
-    })
+    matches = sorted({path for module, path in module_to_file.items() if module == import_name or module.endswith(f".{import_name}")})
     return matches[0] if len(matches) == 1 else None
 
 
@@ -100,38 +99,28 @@ def _resolve_js_import_module(record: dict, rel_path: str) -> str:
                 parts.pop()
             continue
         parts.append(part)
-    joined = "/".join(parts)
-    return _module_name(joined)
+    return _module_name("/".join(parts))
 
 
 def _resolve_rust_import_module(record: dict, rel_path: str) -> str:
-    module = str(record.get("module") or "").strip()
-    module = module.replace("::", ".")
+    module = str(record.get("module") or "").strip().replace("::", ".")
     for prefix in ("crate.", "self."):
         if module.startswith(prefix):
-            module = module[len(prefix) :]
+            module = module[len(prefix):]
     if module.startswith("super."):
         parent = _package_name(rel_path)
         while module.startswith("super."):
-            module = module[len("super.") :]
+            module = module[len("super."):]
             parent = parent.rsplit(".", 1)[0] if "." in parent else ""
         return f"{parent}.{module}".strip(".")
     root = rel_path.replace("\\", "/").split("/", 1)[0]
-    if root and root not in {Path(rel_path).name}:
-        return f"{root}.{module}".strip(".")
-    return module
-
-
-def _resolve_go_import_module(record: dict) -> str:
-    return str(record.get("module") or "").replace("/", ".")
+    return f"{root}.{module}".strip(".") if root and root != Path(rel_path).name else module
 
 
 def _resolve_c_include_module(record: dict, rel_path: str) -> str:
     module = str(record.get("module") or "").replace("/", ".").strip(".")
-    if not module:
-        return module
     parent = _package_name(rel_path)
-    return f"{parent}.{module}".strip(".") if parent else module
+    return f"{parent}.{module}".strip(".") if module and parent else module
 
 
 def _resolve_import_module(record: dict, doc: dict) -> str:
@@ -141,7 +130,7 @@ def _resolve_import_module(record: dict, doc: dict) -> str:
     if language == "rust":
         return _resolve_rust_import_module(record, doc["path"])
     if language == "go":
-        return _resolve_go_import_module(record)
+        return str(record.get("module") or "").replace("/", ".")
     if language == "java":
         return str(record.get("module") or "")
     if language in {"c", "cpp"}:
@@ -150,7 +139,7 @@ def _resolve_import_module(record: dict, doc: dict) -> str:
 
 
 def _symbol_records(parsed: list[dict]) -> tuple[list[dict], dict[str, list[str]]]:
-    symbols = []
+    symbols: list[dict] = []
     aliases: dict[str, list[str]] = {}
     for doc in parsed:
         module = _module_name(doc["path"])
@@ -178,18 +167,14 @@ def _symbol_records(parsed: list[dict]) -> tuple[list[dict], dict[str, list[str]
                     "language": doc.get("language", "python"),
                     "backend": doc.get("backend"),
                     "semantic_level": doc.get("semantic_level"),
+                    "file_role": semantic_file_role(doc["path"]),
                 }
                 if kind == "class":
                     record["bases"] = item.get("bases", [])
                     record["base_records"] = item.get("base_records", [])
                     record["type_kind"] = item.get("type_kind", "class")
                 symbols.append(record)
-                for alias in {
-                    symbol_id,
-                    record["name"],
-                    qname,
-                    f"{module}.{qname}" if module else qname,
-                }:
+                for alias in {symbol_id, record["name"], qname, f"{module}.{qname}" if module else qname}:
                     aliases.setdefault(alias, []).append(symbol_id)
     for key in list(aliases):
         aliases[key] = sorted(set(aliases[key]))
@@ -197,13 +182,8 @@ def _symbol_records(parsed: list[dict]) -> tuple[list[dict], dict[str, list[str]
 
 
 def _resolve_symbol(alias_map: dict[str, list[str]], module: str, name: str) -> tuple[str | None, str, int]:
-    candidates = []
-    for alias in (
-        _canonical_symbol_id(module, name),
-        f"{module}.{name}" if module else name,
-        name,
-        name.split(".")[-1],
-    ):
+    candidates: list[str] = []
+    for alias in (_canonical_symbol_id(module, name), f"{module}.{name}" if module else name, name, name.split(".")[-1]):
         candidates.extend(alias_map.get(alias, []))
     unique = sorted(set(candidates))
     if len(unique) == 1:
@@ -213,14 +193,29 @@ def _resolve_symbol(alias_map: dict[str, list[str]], module: str, name: str) -> 
     return None, "unresolved", 0
 
 
-def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
-    parsed = parse_repo_languages(repo_root, include_tests=include_tests)
+def _load_previous_graph(repo_root: Path) -> dict | None:
+    path = graph_dir(repo_root) / "dependency_graph.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def build_graph(repo_root: Path, include_tests: bool = True, incremental: bool = False) -> dict:
+    build_meta = {"mode": "full"}
+    if incremental:
+        parsed, build_meta = incremental_parse_repo(repo_root, _load_previous_graph(repo_root), include_tests=include_tests)
+    else:
+        parsed = [doc for doc in parse_repo_languages(repo_root, include_tests=include_tests) if classify_source_path(str(doc.get("path") or "")) == "source"]
+
     module_to_file = {_module_name(d["path"]): d["path"] for d in parsed}
     symbols, symbol_aliases = _symbol_records(parsed)
     symbol_by_id = {row["id"]: row for row in symbols}
 
-    symbol_to_file = {}
-    file_symbols = {}
+    symbol_to_file: dict[str, str] = {}
+    file_symbols: dict[str, list[str]] = {}
     for row in symbols:
         symbol_to_file[row["id"]] = row["file"]
         symbol_to_file.setdefault(row["qname"], row["file"])
@@ -229,42 +224,26 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
     for path in list(file_symbols):
         file_symbols[path] = sorted(set(file_symbols[path]))
 
-    file_edges = []
-    seen_file_edges = set()
+    file_edges: list[dict] = []
+    seen_file_edges: set[tuple] = set()
     for doc in parsed:
         src = doc["path"]
         records = doc.get("import_records") or []
-        if records:
-            for record in records:
-                base_module = _resolve_import_module(record, doc)
-                import_name = base_module
-                if doc.get("language") == "python" and record.get("kind") == "from" and record.get("name") and record.get("name") != "*":
-                    import_name = f"{base_module}.{record['name']}" if base_module else str(record["name"])
-                dst = _import_to_file(import_name, module_to_file) or _import_to_file(base_module, module_to_file)
-                if not dst and doc.get("language") in {"go", "java", "c", "cpp"}:
-                    dst = _import_suffix_to_file(base_module, module_to_file)
-                if dst and dst != src:
-                    key = (src, dst, import_name)
-                    if key not in seen_file_edges:
-                        seen_file_edges.add(key)
-                        file_edges.append({
-                            "source": src,
-                            "target": dst,
-                            "kind": "import",
-                            "import": import_name,
-                            "level": record.get("level", 0),
-                            "language": doc.get("language"),
-                        })
-        else:
-            for imp in doc.get("imports", []):
-                dst = _import_to_file(str(imp).replace("/", "."), module_to_file)
-                if dst and dst != src:
-                    key = (src, dst, imp)
-                    if key not in seen_file_edges:
-                        seen_file_edges.add(key)
-                        file_edges.append({"source": src, "target": dst, "kind": "import", "import": imp, "language": doc.get("language")})
+        for record in records:
+            base_module = _resolve_import_module(record, doc)
+            import_name = base_module
+            if doc.get("language") == "python" and record.get("kind") == "from" and record.get("name") and record.get("name") != "*":
+                import_name = f"{base_module}.{record['name']}" if base_module else str(record["name"])
+            dst = _import_to_file(import_name, module_to_file) or _import_to_file(base_module, module_to_file)
+            if not dst and doc.get("language") in {"go", "java", "c", "cpp"}:
+                dst = _import_suffix_to_file(base_module, module_to_file)
+            if dst and dst != src:
+                key = (src, dst, import_name)
+                if key not in seen_file_edges:
+                    seen_file_edges.add(key)
+                    file_edges.append({"source": src, "target": dst, "kind": "import", "import": import_name, "level": record.get("level", 0), "language": doc.get("language")})
 
-    call_edges = []
+    call_edges: list[dict] = []
     for doc in parsed:
         src_file = doc["path"]
         module = _module_name(src_file)
@@ -289,12 +268,9 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
                 "language": doc.get("language"),
             })
 
-    inheritance_edges = build_inheritance_edges(
-        parsed,
-        symbols,
-        module_to_file,
-        _resolve_import_module,
-    )
+    inheritance_edges = build_inheritance_edges(parsed, symbols, module_to_file, _resolve_import_module)
+    architecture_edges = build_architecture_edges(parsed, call_edges, symbol_by_id)
+    test_dependency_edges = build_test_dependency_edges(file_edges, call_edges)
 
     language_counts: dict[str, int] = {}
     backend_counts: dict[str, int] = {}
@@ -305,7 +281,7 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
         backend_counts[backend] = backend_counts.get(backend, 0) + 1
 
     graph = {
-        "version": 2,
+        "version": 3,
         "created_at": utcnow(),
         "repo": str(repo_root),
         "files": [d["path"] for d in parsed],
@@ -318,7 +294,11 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
         "file_edges": file_edges,
         "call_edges": call_edges,
         "inheritance_edges": inheritance_edges,
+        "architecture_edges": architecture_edges,
+        "test_dependency_edges": test_dependency_edges,
         "language_backends": available_backends(),
+        "build": build_meta,
+        "source_policy": {"accepted": "source", "excluded": ["ignored", "vendor", "generated"]},
         "stats": {
             "file_count": len(parsed),
             "file_edge_count": len(file_edges),
@@ -328,6 +308,8 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
             "inheritance_edge_count": len(inheritance_edges),
             "resolved_inheritance_edge_count": len([e for e in inheritance_edges if e.get("target_symbol_id")]),
             "ambiguous_inheritance_edge_count": len([e for e in inheritance_edges if str(e.get("resolution", "")).startswith("ambiguous")]),
+            "architecture_edge_count": len(architecture_edges),
+            "test_dependency_edge_count": len(test_dependency_edges),
             "symbol_count": len(symbols),
             "parse_errors": len([d for d in parsed if d.get("parse_error")]),
             "language_counts": language_counts,
@@ -337,7 +319,7 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
     gd = graph_dir(repo_root)
     (gd / "ast_index.json").write_text(json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8")
     (gd / "dependency_graph.json").write_text(json.dumps(graph, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"status": "ok", "graph_dir": str(gd), "stats": graph["stats"]}
+    return {"status": "ok", "graph_dir": str(gd), "stats": graph["stats"], "build": build_meta}
 
 
 def load_graph(repo_root: Path, auto_build: bool = True) -> dict:
