@@ -10,16 +10,20 @@ import subprocess
 
 from uacos.config import uacos_dir
 
+
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
 def new_patch_id() -> str:
     return "PATCH-" + uuid.uuid4().hex[:12]
+
 
 def patch_runs_dir(repo_root: Path) -> Path:
     p = uacos_dir(repo_root) / "patch_runs"
     p.mkdir(parents=True, exist_ok=True)
     return p
+
 
 def _norm_path(p: str | None) -> str | None:
     if not p:
@@ -30,6 +34,7 @@ def _norm_path(p: str | None) -> str | None:
     if p.startswith("a/") or p.startswith("b/"):
         p = p[2:]
     return p.replace("\\", "/")
+
 
 def _is_safe_rel(rel: str) -> bool:
     if not rel:
@@ -42,6 +47,27 @@ def _is_safe_rel(rel: str) -> bool:
     if rel.startswith(".git/") or "/.git/" in rel:
         return False
     return True
+
+
+def _target(repo_root: Path, rel: str) -> Path:
+    return repo_root / Path(rel)
+
+
+def _text_target_finding(repo_root: Path, rel: str) -> dict | None:
+    """Reject mutable targets that are symlinks or cannot round-trip as UTF-8 text."""
+    path = _target(repo_root, rel)
+    if path.is_symlink():
+        return {"severity": "error", "path": rel, "reason": "symlink_target"}
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        path.read_text(encoding="utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return {"severity": "error", "path": rel, "reason": "unsupported_text_encoding"}
+    except OSError:
+        return {"severity": "error", "path": rel, "reason": "target_read_failed"}
+    return None
+
 
 def parse_unified_diff(patch_text: str) -> list[dict]:
     lines = patch_text.splitlines()
@@ -106,6 +132,7 @@ def parse_unified_diff(patch_text: str) -> list[dict]:
         f["path"] = f.get("new_path") or f.get("old_path")
     return files
 
+
 def _allowed(rel: str, allowed_files: list[str] | None = None, allowed_dirs: list[str] | None = None) -> bool:
     allowed_files = allowed_files or []
     allowed_dirs = allowed_dirs or []
@@ -120,6 +147,7 @@ def _allowed(rel: str, allowed_files: list[str] | None = None, allowed_dirs: lis
             return True
     return False
 
+
 def validate_patch(repo_root: Path, patch_text: str, allowed_files: list[str] | None = None, allowed_dirs: list[str] | None = None) -> dict:
     files = parse_unified_diff(patch_text)
     findings = []
@@ -129,29 +157,39 @@ def validate_patch(repo_root: Path, patch_text: str, allowed_files: list[str] | 
         for rel in paths:
             if not _is_safe_rel(rel):
                 findings.append({"severity": "error", "path": rel, "reason": "unsafe_path"})
+                continue
             if not _allowed(rel, allowed_files, allowed_dirs):
                 findings.append({"severity": "error", "path": rel, "reason": "outside_allowed_scope"})
+            path = _target(repo_root, rel)
+            if path.is_symlink():
+                findings.append({"severity": "error", "path": rel, "reason": "symlink_target"})
+
         if op in {"modify", "rename_modify"}:
-            old_path = repo_root / f["old_path"]
+            old_path = _target(repo_root, f["old_path"])
             if not old_path.exists():
                 findings.append({"severity": "error", "path": f["old_path"], "reason": "modify_target_missing"})
+            else:
+                finding = _text_target_finding(repo_root, f["old_path"])
+                if finding:
+                    findings.append(finding)
         if op == "new":
-            new_path = repo_root / f["new_path"]
-            if new_path.exists():
+            new_path = _target(repo_root, f["new_path"])
+            if new_path.exists() or new_path.is_symlink():
                 findings.append({"severity": "error", "path": f["new_path"], "reason": "new_file_already_exists"})
         if op == "delete":
-            old_path = repo_root / f["old_path"]
-            if not old_path.exists():
+            old_path = _target(repo_root, f["old_path"])
+            if not old_path.exists() and not old_path.is_symlink():
                 findings.append({"severity": "error", "path": f["old_path"], "reason": "delete_target_missing"})
         if op in {"rename", "rename_modify"}:
-            old_path = repo_root / f["old_path"]
-            new_path = repo_root / f["new_path"]
-            if not old_path.exists():
+            old_path = _target(repo_root, f["old_path"])
+            new_path = _target(repo_root, f["new_path"])
+            if not old_path.exists() and not old_path.is_symlink():
                 findings.append({"severity": "error", "path": f["old_path"], "reason": "rename_source_missing"})
-            if new_path.exists():
+            if new_path.exists() or new_path.is_symlink():
                 findings.append({"severity": "error", "path": f["new_path"], "reason": "rename_target_exists"})
     status = "pass" if not any(x["severity"] == "error" for x in findings) else "fail"
     return {"status": status, "file_count": len(files), "files": [{k:v for k,v in f.items() if k != "raw_lines"} for f in files], "findings": findings}
+
 
 def _apply_modify_text(old_text: str, file_diff: dict) -> tuple[str, list[str]]:
     old_lines = old_text.splitlines()
@@ -171,7 +209,6 @@ def _apply_modify_text(old_text: str, file_diff: dict) -> tuple[str, list[str]]:
             if line.startswith(" "):
                 expected = line[1:]
                 if idx < len(old_lines):
-                    # tolerate exact line, otherwise keep moving but note mismatch
                     if old_lines[idx] != expected:
                         notes.append(f"context_mismatch_at:{idx+1}")
                     result.append(old_lines[idx])
@@ -193,6 +230,7 @@ def _apply_modify_text(old_text: str, file_diff: dict) -> tuple[str, list[str]]:
         idx += 1
     return "\n".join(result) + ("\n" if old_text.endswith("\n") or result else ""), notes
 
+
 def _new_file_text(file_diff: dict) -> str:
     lines = []
     for h in file_diff.get("hunks", []):
@@ -203,6 +241,7 @@ def _new_file_text(file_diff: dict) -> str:
                 lines.append(line[1:])
     return "\n".join(lines) + ("\n" if lines else "")
 
+
 def _run_tests(repo_root: Path, tests: list[str] | None = None) -> list[dict]:
     results = []
     for cmd in tests or []:
@@ -212,8 +251,9 @@ def _run_tests(repo_root: Path, tests: list[str] | None = None) -> list[dict]:
             break
     return results
 
+
 def apply_patch(repo_root: Path, patch_file: Path, allowed_files: list[str] | None = None, allowed_dirs: list[str] | None = None, tests: list[str] | None = None, dry_run: bool = False) -> dict:
-    patch_text = patch_file.read_text(encoding="utf-8", errors="replace")
+    patch_text = patch_file.read_text(encoding="utf-8", errors="strict")
     validation = validate_patch(repo_root, patch_text, allowed_files=allowed_files, allowed_dirs=allowed_dirs)
     run_id = new_patch_id()
     run_dir = patch_runs_dir(repo_root) / run_id
@@ -267,7 +307,7 @@ def apply_patch(repo_root: Path, patch_file: Path, allowed_files: list[str] | No
                 shutil.move(str(src), str(dst))
                 notes = []
                 if op == "rename_modify" and f.get("hunks"):
-                    old_text = dst.read_text(encoding="utf-8", errors="replace")
+                    old_text = dst.read_text(encoding="utf-8", errors="strict")
                     new_text, notes = _apply_modify_text(old_text, f)
                     dst.write_text(new_text, encoding="utf-8")
                 manifest["changed"].append({"operation": op, "old_path": f["old_path"], "new_path": f["new_path"], "backup": str(backup), "notes": notes})
@@ -276,7 +316,7 @@ def apply_patch(repo_root: Path, patch_file: Path, allowed_files: list[str] | No
                 backup = backup_dir / f["old_path"]
                 backup.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(target, backup)
-                old_text = target.read_text(encoding="utf-8", errors="replace")
+                old_text = target.read_text(encoding="utf-8", errors="strict")
                 new_text, notes = _apply_modify_text(old_text, f)
                 target.write_text(new_text, encoding="utf-8")
                 manifest["changed"].append({"operation": "modify", "path": f["old_path"], "backup": str(backup), "notes": notes})
@@ -297,6 +337,7 @@ def apply_patch(repo_root: Path, patch_file: Path, allowed_files: list[str] | No
     (run_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     manifest["manifest_file"] = str(run_dir / "manifest.json")
     return manifest
+
 
 def rollback_patch(repo_root: Path, manifest: dict | Path) -> dict:
     if isinstance(manifest, Path):
