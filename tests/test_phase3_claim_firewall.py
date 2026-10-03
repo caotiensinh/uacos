@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from uacos.agent.task import create_task
+from uacos.execution.artifacts import evidence_report_v2
 from uacos.execution.evidence_ledger import (
     append_evidence_event,
     evidence_ledger_path,
@@ -164,6 +166,27 @@ def test_tampered_ledger_fails_claim_closed(tmp_path: Path):
     assert result["reason"] == "evidence_ledger_invalid"
 
 
+def test_tampered_ledger_never_receives_new_claim_decision(tmp_path: Path):
+    repo = _repo(tmp_path)
+    event = append_evidence_event(repo, event_type="test_command", source="test_runner", status="pass", command="pytest -q")
+    path = evidence_ledger_path(repo)
+    row = json.loads(path.read_text(encoding="utf-8"))
+    row["status"] = "recorded"
+    tampered = json.dumps(row) + "\n"
+    path.write_text(tampered, encoding="utf-8")
+
+    result = evaluate_and_record_claim(
+        repo,
+        {"claim_id": "C8B", "claim_type": "tests_passed", "text": "Tests passed", "evidence_event_ids": [event["event_id"]]},
+    )
+
+    assert result["status"] == UNSUPPORTED
+    assert result["reason"] == "evidence_ledger_invalid"
+    assert result["decision_recorded"] is False
+    assert result["decision_event_id"] is None
+    assert path.read_text(encoding="utf-8") == tampered
+
+
 def test_batch_firewall_blocks_report_and_only_exposes_supported_facts(tmp_path: Path):
     repo = _repo(tmp_path)
     event = append_evidence_event(repo, event_type="test_command", source="test_runner", status="pass", command="pytest -q")
@@ -178,6 +201,27 @@ def test_batch_firewall_blocks_report_and_only_exposes_supported_facts(tmp_path:
     assert report["status"] == "blocked"
     assert report["unsupported_claim_ids"] == ["BAD"]
     assert [claim["claim_id"] for claim in factual_claims_only(report)] == ["GOOD"]
+
+
+def test_evidence_report_only_promotes_supported_claims_to_verified_facts(tmp_path: Path):
+    repo = _repo(tmp_path)
+    task_file = create_task(repo, "Evidence report", "Render only verified claims", allowed_files=["app.py"])
+    event = append_evidence_event(repo, event_type="test_command", source="test_runner", status="pass", command="pytest -q")
+    claim_report = evaluate_claims(
+        repo,
+        [
+            {"claim_id": "GOOD", "claim_type": "tests_passed", "text": "Tests passed", "evidence_event_ids": [event["event_id"]]},
+            {"claim_id": "BAD", "claim_type": "tests_passed", "text": "Everything passed", "evidence_event_ids": []},
+        ],
+    )
+
+    report = evidence_report_v2(repo, task_file, claim_report=claim_report)
+
+    assert "VERIFIED `GOOD` / `tests_passed`" in report
+    assert "VERIFIED `BAD`" not in report
+    assert "`BAD` -> UNSUPPORTED" in report
+    assert "Blocked claims (not rendered as facts)" in report
+    assert "## Final Status: BLOCKED" in report
 
 
 def test_claim_decision_itself_is_recorded_as_evidence(tmp_path: Path):
@@ -196,6 +240,7 @@ def test_claim_decision_itself_is_recorded_as_evidence(tmp_path: Path):
     rows = read_evidence_ledger(repo)
 
     assert result["status"] == SUPPORTED
+    assert result["decision_recorded"] is True
     assert rows[-1]["event_id"] == result["decision_event_id"]
     assert rows[-1]["event_type"] == "claim_decision"
     assert rows[-1]["data"]["decision"] == SUPPORTED
