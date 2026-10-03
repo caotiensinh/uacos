@@ -58,6 +58,17 @@ def _import_to_file(import_name: str, module_to_file: dict[str, str]) -> str | N
     return None
 
 
+def _import_suffix_to_file(import_name: str, module_to_file: dict[str, str]) -> str | None:
+    if not import_name:
+        return None
+    matches = sorted({
+        path
+        for module, path in module_to_file.items()
+        if module == import_name or module.endswith(f".{import_name}")
+    })
+    return matches[0] if len(matches) == 1 else None
+
+
 def _resolve_python_import_module(record: dict, rel_path: str) -> str:
     module = str(record.get("module") or "")
     level = int(record.get("level") or 0)
@@ -228,11 +239,7 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
                     import_name = f"{base_module}.{record['name']}" if base_module else str(record["name"])
                 dst = _import_to_file(import_name, module_to_file) or _import_to_file(base_module, module_to_file)
                 if not dst and doc.get("language") in {"go", "java", "c", "cpp"}:
-                    suffixes = base_module.split(".")
-                    for index in range(1, len(suffixes)):
-                        dst = _import_to_file(".".join(suffixes[index:]), module_to_file)
-                        if dst:
-                            break
+                    dst = _import_suffix_to_file(base_module, module_to_file)
                 if dst and dst != src:
                     key = (src, dst, import_name)
                     if key not in seen_file_edges:
