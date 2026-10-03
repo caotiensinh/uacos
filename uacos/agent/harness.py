@@ -10,6 +10,7 @@ from uacos.config import uacos_dir
 from uacos.graph.builder import build_graph
 from uacos.impact.analyzer import smart_context
 from uacos.patching.engine import validate_patch
+from uacos.runtime.no_progress import NoProgressTracker
 
 
 def _extract_diff(text: str) -> str | None:
@@ -64,12 +65,14 @@ def run_agent_harness(
     run_id: str | None = None,
     pre_iteration_check: Callable[[int], tuple[str, str] | None] | None = None,
     attempt_hook: Callable[[dict], None] | None = None,
+    no_progress_threshold: int = 2,
 ) -> dict:
     """Run a bounded external-agent loop through one normalized contract.
 
     Agent patches are validate-only here. Transactional apply/tests remain a separate
     safety gate. Runtime lifecycle hooks are optional so a durable orchestrator can
     persist progress without changing adapter semantics or duplicating this loop.
+    Repeated identical outcomes stop early instead of burning the full retry budget.
     """
     if max_iterations < 1:
         raise ValueError("max_iterations_must_be_positive")
@@ -82,9 +85,11 @@ def run_agent_harness(
     build_graph(repo_root)
     context = smart_context(repo_root, task, max_files=max_files, max_chars=max_context_chars)
     attempts: list[dict] = []
+    no_progress = NoProgressTracker(threshold=no_progress_threshold)
     effective_run_id = run_id or AgentRunRequest(task=task, context="").run_id
     final_status = "failed"
     final_reason = "max_iterations_exhausted"
+    no_progress_stop: dict[str, Any] | None = None
 
     for iteration in range(1, max_iterations + 1):
         if cancel_check and cancel_check():
@@ -177,6 +182,13 @@ def run_agent_harness(
             "patch_validation": validation,
             "failure_class": failure_class,
         }
+        if attempt_status != "passed" and result.status not in {"cancelled", "blocked"}:
+            progress = no_progress.observe(attempt)
+            attempt["no_progress"] = progress
+            if progress["stalled"]:
+                no_progress_stop = progress
+                final_status = "failed"
+                final_reason = "no_progress_repeated_identical_outcome"
         attempts.append(attempt)
         if attempt_hook:
             attempt_hook(attempt)
@@ -185,6 +197,8 @@ def run_agent_harness(
             break
         if result.status in {"cancelled", "blocked"}:
             final_status = result.status
+            break
+        if no_progress_stop:
             break
 
     totals = {
@@ -212,6 +226,7 @@ def run_agent_harness(
             "allowed_files": allowed_files,
             "allowed_dirs": allowed_dirs,
             "tests": tests,
+            "no_progress_threshold": no_progress_threshold,
         },
         "context": {
             "model": context.get("context_model"),
@@ -225,9 +240,11 @@ def run_agent_harness(
             "budget_utilization": context.get("budget_utilization"),
         },
         "attempts": attempts,
+        "no_progress": no_progress_stop,
         "metrics": totals | {
             "first_pass_success": bool(attempts and attempts[0]["status"] == "passed"),
             "patch_valid": final_status == "passed",
+            "bounded_stop": bool(no_progress_stop),
         },
     }
     report["evidence_file"] = _write_evidence(repo_root, report)
