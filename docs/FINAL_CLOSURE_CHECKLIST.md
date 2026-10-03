@@ -6,12 +6,29 @@ This checklist is the final product/CI/documentation closure gate after the WS1-
 
 Implementation tests, fixture tests, mocks, binary probes, and localhost contract tests are useful evidence, but they do not substitute for the real-provider and real-benchmark evidence called out below.
 
+Run the explicit closure checker at any time:
+
+```bash
+python scripts/final_closure_check.py --repo .
+```
+
+This non-strict mode keeps implementation readiness separate from missing real-world evidence. It writes `reports/final_closure_report.json` and reports blockers without pretending they are implementation failures.
+
+For the final DONE gate, require real evidence:
+
+```bash
+python scripts/final_closure_check.py --repo . --strict-evidence
+```
+
+Strict mode fails unless both the real-provider E2E report and comparative benchmark report are present and PASS.
+
 ## Product surface
 
 - [x] Root README uses a simple three-stage workflow: initialize/inspect -> bounded context -> guard/apply verified changes.
 - [x] Product definition clearly states that UACOS is reliability/context/safety infrastructure, not a coding agent replacement.
 - [x] Existing low-level `uacos ...` commands remain backward compatible.
 - [x] Evidence output locations are documented.
+- [x] Final closure checker separates implementation readiness from real-world evidence readiness.
 
 ## CI
 
@@ -57,4 +74,5 @@ UACOS reaches checklist closure when all of the following are true:
 1. exact-head full CI is green;
 2. at least one real coding-agent provider has a passing archived E2E run;
 3. comparative benchmark observations are real, same-provider/model, repeated, and archived;
-4. documentation matches those actual results without stronger claims than the evidence supports.
+4. `python scripts/final_closure_check.py --repo . --strict-evidence` returns PASS;
+5. documentation matches those actual results without stronger claims than the evidence supports.
