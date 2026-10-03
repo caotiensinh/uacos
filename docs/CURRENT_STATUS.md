@@ -18,8 +18,8 @@ UACOS is **not** a Goose clone and is not a general-purpose coding/chat agent. E
 | Semantic safety | Stale-patch guards, semantic diff risk, YAML policy, patch-bound approval, verified rollback |
 | MCP integration | Real HTTP JSON-RPC MCP client merged; localhost network E2E covered |
 | Real coding-agent E2E | Execution/evidence runner merged; real-provider execution still blocked on current self-hosted runner |
-| Comparative benchmark | Ground-truth evaluator in validation; real same-provider/model observations still required |
-| Product/CI/docs cleanup | Final cleanup in progress |
+| Comparative benchmark | Ground-truth evaluator implemented; real same-provider/model observations still required |
+| Product/CI/docs cleanup | Final convergence PR validates benchmark + WS6 together on exact `main` base |
 
 ## Implemented core
 
@@ -87,6 +87,8 @@ The first self-hosted evidence run on `aiserver-uacos` completed successfully as
 
 Therefore **Real Agent E2E is not complete yet**. Completion requires at least one real provider to be installed/configured, executed, and archived with `status=passed`; broader provider claims require evidence for each named provider.
 
+Provider-readiness diagnostics now distinguish missing binary, missing/invalid argv, and missing detected authentication prerequisites where applicable without writing secret values to reports.
+
 ## Comparative benchmark boundary
 
 The comparative evaluator compares three modes:
@@ -139,6 +141,20 @@ uacos-flow apply-safe --repo . --patch change.diff --allowed-file app/auth.py --
 
 Existing `uacos ...` commands remain available for lower-level workflows.
 
+## CI and final closure
+
+Pull-request CI keeps the full Python 3.9/3.11/3.13 matrix on self-hosted Linux. After that exact head passes, post-merge `main` CI uses Python 3.11 only so the Release workflow can validate the merged commit without immediately duplicating the entire matrix and starving the runner queue.
+
+Use:
+
+```bash
+python scripts/provider_readiness.py
+python scripts/final_closure_check.py --repo .
+python scripts/final_closure_check.py --repo . --strict-evidence
+```
+
+The strict command remains expected to fail until real-provider and real comparative evidence both pass.
+
 ## What is safe to claim now
 
 Allowed:
@@ -159,6 +175,7 @@ Not supported without direct evidence:
 
 ## Remaining completion gates
 
-1. Install/configure at least one real coding-agent provider on an eligible self-hosted runner and archive a passing real-provider E2E run.
-2. Collect real comparative benchmark observations with the same provider/model across `full_repo`, `grep`, and `uacos`, at least 3 repeats per mode.
-3. Run the final WS6 documentation/CI/product cleanup and final full-repo gate.
+1. Pass fresh exact-head PR CI for the converged benchmark + WS6 branch.
+2. Install/configure at least one real coding-agent provider on an eligible self-hosted runner and archive a passing real-provider E2E run.
+3. Collect real comparative benchmark observations with the same provider/model across `full_repo`, `grep`, and `uacos`, at least 3 repeats per mode.
+4. Run strict final closure and require PASS before marking the checklist closed.
