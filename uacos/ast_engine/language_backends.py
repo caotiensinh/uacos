@@ -10,6 +10,12 @@ from uacos.ast_engine.tree_sitter_js_ts import (
     parse_repo_js_ts_tree_sitter,
     tree_sitter_available,
 )
+from uacos.ast_engine.tree_sitter_rust_go import (
+    parse_repo_go_tree_sitter,
+    parse_repo_rust_tree_sitter,
+    tree_sitter_go_available,
+    tree_sitter_rust_available,
+)
 
 
 @dataclass(frozen=True)
@@ -30,27 +36,40 @@ def _parse_python(repo_root: Path, include_tests: bool = True) -> list[dict]:
     return parse_repo_python(repo_root, include_tests=include_tests)
 
 
-def _filter_js_ts_tests(docs: list[dict], include_tests: bool) -> list[dict]:
+def _filter_tests(docs: list[dict], include_tests: bool) -> list[dict]:
     if include_tests:
         return docs
     filtered = []
     for doc in docs:
         rel = str(doc.get("path") or "").replace("\\", "/")
+        lower = rel.lower()
         name = Path(rel).name.lower()
-        if "/test/" in f"/{rel.lower()}/" or "/tests/" in f"/{rel.lower()}/":
+        if "/test/" in f"/{lower}/" or "/tests/" in f"/{lower}/":
             continue
-        if name.endswith((".test.js", ".test.jsx", ".test.ts", ".test.tsx", ".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx")):
+        if name.endswith((
+            ".test.js", ".test.jsx", ".test.ts", ".test.tsx",
+            ".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx",
+            "_test.go",
+        )):
             continue
         filtered.append(doc)
     return filtered
 
 
 def _parse_js_ts_tree_sitter(repo_root: Path, include_tests: bool = True) -> list[dict]:
-    return _filter_js_ts_tests(parse_repo_js_ts_tree_sitter(repo_root), include_tests)
+    return _filter_tests(parse_repo_js_ts_tree_sitter(repo_root), include_tests)
 
 
 def _parse_js_ts_fallback(repo_root: Path, include_tests: bool = True) -> list[dict]:
-    return _filter_js_ts_tests(parse_repo_js_ts(repo_root), include_tests)
+    return _filter_tests(parse_repo_js_ts(repo_root), include_tests)
+
+
+def _parse_rust_tree_sitter(repo_root: Path, include_tests: bool = True) -> list[dict]:
+    return _filter_tests(parse_repo_rust_tree_sitter(repo_root), include_tests)
+
+
+def _parse_go_tree_sitter(repo_root: Path, include_tests: bool = True) -> list[dict]:
+    return _filter_tests(parse_repo_go_tree_sitter(repo_root), include_tests)
 
 
 BACKENDS: tuple[LanguageBackend, ...] = (
@@ -62,8 +81,6 @@ BACKENDS: tuple[LanguageBackend, ...] = (
         parse_repo=_parse_python,
         parser_engine="python_ast",
     ),
-    # Keep the public backend name stable. The implementation is upgraded to
-    # Tree-sitter when semantic dependencies are installed.
     LanguageBackend(
         name="javascript_typescript",
         languages=("javascript", "typescript"),
@@ -80,6 +97,24 @@ BACKENDS: tuple[LanguageBackend, ...] = (
         semantic_level="structured_regex",
         parse_repo=_parse_js_ts_fallback,
         parser_engine="regex",
+    ),
+    LanguageBackend(
+        name="rust",
+        languages=("rust",),
+        extensions=(".rs",),
+        semantic_level="tree_sitter_ast",
+        parse_repo=_parse_rust_tree_sitter,
+        parser_engine="tree_sitter",
+        available=tree_sitter_rust_available,
+    ),
+    LanguageBackend(
+        name="go",
+        languages=("go",),
+        extensions=(".go",),
+        semantic_level="tree_sitter_ast",
+        parse_repo=_parse_go_tree_sitter,
+        parser_engine="tree_sitter",
+        available=tree_sitter_go_available,
     ),
 )
 
