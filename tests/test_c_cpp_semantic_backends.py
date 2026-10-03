@@ -19,17 +19,21 @@ def test_c_tree_sitter_functions_calls_and_include(tmp_path: Path):
     source.write_text(
         '#include "helper.h"\n'
         "void helper(void) {}\n"
-        "int main(void) { helper(); return 0; }\n",
+        "int add(int left, int right) { return left + right; }\n"
+        "int main(void) { helper(); return add(1, 2); }\n",
         encoding="utf-8",
     )
 
     assert tree_sitter_c_available() is True
     doc = parse_c_file_tree_sitter(source, repo)
     assert doc["language"] == "c"
-    assert any(row["qname"] == "helper" for row in doc["functions"])
-    assert any(row["qname"] == "main" for row in doc["functions"])
+    qnames = {row["qname"] for row in doc["functions"]}
+    assert {"helper", "add", "main"} <= qnames
+    assert "left" not in qnames
+    assert "right" not in qnames
     assert any(row["module"] == "helper" for row in doc["import_records"])
     assert any(row["caller"] == "main" and row["callee"] == "helper" for row in doc["calls"])
+    assert any(row["caller"] == "main" and row["callee"] == "add" for row in doc["calls"])
 
 
 def test_cpp_tree_sitter_class_method_and_call(tmp_path: Path):
@@ -37,7 +41,7 @@ def test_cpp_tree_sitter_class_method_and_call(tmp_path: Path):
     repo.mkdir()
     source = repo / "worker.cpp"
     source.write_text(
-        "class Worker { public: void ping() {} void run() { ping(); } };\n",
+        "class Worker { public: void ping() {} void run(int count) { ping(); } };\n",
         encoding="utf-8",
     )
 
@@ -46,6 +50,7 @@ def test_cpp_tree_sitter_class_method_and_call(tmp_path: Path):
     assert doc["language"] == "cpp"
     assert any(row["qname"] == "Worker" for row in doc["classes"])
     assert any(row["qname"] == "Worker.run" for row in doc["methods"])
+    assert not any(row["qname"] == "Worker.count" for row in doc["methods"])
     assert any(row["caller"] == "Worker.run" and row["callee"] == "ping" for row in doc["calls"])
 
 
