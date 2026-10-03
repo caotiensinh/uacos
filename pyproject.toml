@@ -12,6 +12,9 @@ requires-python = ">=3.9"
 authors = [
   { name = "UACOS maintainers" }
 ]
+dependencies = [
+  "PyYAML>=6,<7",
+]
 keywords = ["code-intelligence", "coding-agents", "context-compression", "developer-tools", "llm", "local-first", "mcp", "patch-safety", "release-gate"]
 classifiers = [
   "Development Status :: 4 - Beta",
