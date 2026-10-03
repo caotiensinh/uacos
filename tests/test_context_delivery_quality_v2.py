@@ -20,27 +20,26 @@ def test_delivered_evaluator_prevents_same_file_false_symbol_pass(tmp_path: Path
     _write(
         tmp_path,
         "pkg/mod.py",
-        "class Worker:\n"
-        "    def target(self):\n"
-        "        return 1\n\n"
-        "    def hidden_required(self):\n"
-        "        return 2\n",
+        "def target():\n"
+        "    return 1\n\n"
+        "def hidden_required():\n"
+        "    return 2\n",
     )
     build_graph(tmp_path)
 
     legacy = evaluate_task_context(
         tmp_path,
-        "fix pkg.mod:Worker.target",
+        "fix pkg.mod:target",
         required_files=["pkg/mod.py"],
-        required_symbols=["pkg.mod:Worker.hidden_required"],
+        required_symbols=["pkg.mod:hidden_required"],
         max_files=1,
         refresh_graph=False,
     )
     delivered = evaluate_delivered_task_context(
         tmp_path,
-        "fix pkg.mod:Worker.target",
+        "fix pkg.mod:target",
         required_files=["pkg/mod.py"],
-        required_symbols=["pkg.mod:Worker.hidden_required"],
+        required_symbols=["pkg.mod:hidden_required"],
         max_files=1,
         max_chars=5000,
         refresh_graph=False,
@@ -50,7 +49,7 @@ def test_delivered_evaluator_prevents_same_file_false_symbol_pass(tmp_path: Path
     assert delivered["quality"]["metrics"]["file_recall"] == 1.0
     assert delivered["quality"]["metrics"]["required_symbol_recall"] == 0.0
     assert delivered["status"] == "fail"
-    assert "pkg.mod:Worker.hidden_required" in delivered["quality"]["missing_required_symbol_ids"]
+    assert "pkg.mod:hidden_required" in delivered["quality"]["missing_required_symbol_ids"]
 
 
 def test_delivered_evaluator_passes_for_symbol_actually_sent_to_agent(tmp_path: Path):
