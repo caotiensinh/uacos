@@ -4,17 +4,23 @@ import argparse
 import json
 from pathlib import Path
 
-from uacos.eval.context_quality import evaluate_manifest
+from uacos.eval.context_quality import evaluate_delivered_manifest, evaluate_manifest
 from uacos.graph.builder import build_graph
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Measure UACOS context selection against explicit ground truth."
+        description="Measure UACOS context quality against explicit ground truth."
     )
     parser.add_argument("--repo", default=".")
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--output", default="reports/context_quality_v2_report.json")
+    parser.add_argument(
+        "--selection-mode",
+        choices=("delivered", "ranking"),
+        default="delivered",
+        help="Measure exact agent-delivered context (default) or legacy ranked-file coverage.",
+    )
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args()
 
@@ -25,8 +31,12 @@ def main() -> int:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     build_graph(repo_root)
-    report = evaluate_manifest(repo_root, manifest)
+    if args.selection_mode == "ranking":
+        report = evaluate_manifest(repo_root, manifest)
+    else:
+        report = evaluate_delivered_manifest(repo_root, manifest)
     report["manifest"] = str(manifest_path)
+    report["selection_mode"] = args.selection_mode
 
     output = Path(args.output)
     if not output.is_absolute():
@@ -39,6 +49,8 @@ def main() -> int:
             json.dumps(
                 {
                     "status": report["status"],
+                    "evaluation_model": report.get("evaluation_model"),
+                    "selection_mode": args.selection_mode,
                     "task_count": report["task_count"],
                     "passed_task_count": report["passed_task_count"],
                     "pass_rate": report["pass_rate"],
