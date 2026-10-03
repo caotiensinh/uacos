@@ -20,6 +20,12 @@ from uacos.ast_engine.tree_sitter_java import (
     parse_repo_java_tree_sitter,
     tree_sitter_java_available,
 )
+from uacos.ast_engine.tree_sitter_c_cpp import (
+    parse_repo_c_tree_sitter,
+    parse_repo_cpp_tree_sitter,
+    tree_sitter_c_available,
+    tree_sitter_cpp_available,
+)
 
 
 @dataclass(frozen=True)
@@ -80,6 +86,14 @@ def _parse_java_tree_sitter(repo_root: Path, include_tests: bool = True) -> list
     return _filter_tests(parse_repo_java_tree_sitter(repo_root), include_tests)
 
 
+def _parse_c_tree_sitter(repo_root: Path, include_tests: bool = True) -> list[dict]:
+    return _filter_tests(parse_repo_c_tree_sitter(repo_root), include_tests)
+
+
+def _parse_cpp_tree_sitter(repo_root: Path, include_tests: bool = True) -> list[dict]:
+    return _filter_tests(parse_repo_cpp_tree_sitter(repo_root), include_tests)
+
+
 BACKENDS: tuple[LanguageBackend, ...] = (
     LanguageBackend(
         name="python_ast",
@@ -132,6 +146,24 @@ BACKENDS: tuple[LanguageBackend, ...] = (
         parse_repo=_parse_java_tree_sitter,
         parser_engine="tree_sitter",
         available=tree_sitter_java_available,
+    ),
+    LanguageBackend(
+        name="c",
+        languages=("c",),
+        extensions=(".c", ".h"),
+        semantic_level="tree_sitter_ast",
+        parse_repo=_parse_c_tree_sitter,
+        parser_engine="tree_sitter",
+        available=tree_sitter_c_available,
+    ),
+    LanguageBackend(
+        name="cpp",
+        languages=("cpp",),
+        extensions=(".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx"),
+        semantic_level="tree_sitter_ast",
+        parse_repo=_parse_cpp_tree_sitter,
+        parser_engine="tree_sitter",
+        available=tree_sitter_cpp_available,
     ),
 )
 
