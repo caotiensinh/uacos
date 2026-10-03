@@ -33,7 +33,7 @@ semantic = [
   "tree-sitter>=0.23,<0.24",
   "tree-sitter-javascript==0.23.1",
   "tree-sitter-typescript==0.23.2",
-  "tree-sitter-rust==0.23.3",
+  "tree-sitter-rust==0.23.2",
   "tree-sitter-go==0.23.4",
 ]
 test = [
@@ -41,7 +41,7 @@ test = [
   "tree-sitter>=0.23,<0.24",
   "tree-sitter-javascript==0.23.1",
   "tree-sitter-typescript==0.23.2",
-  "tree-sitter-rust==0.23.3",
+  "tree-sitter-rust==0.23.2",
   "tree-sitter-go==0.23.4",
 ]
 dev = [
@@ -50,7 +50,7 @@ dev = [
   "tree-sitter>=0.23,<0.24",
   "tree-sitter-javascript==0.23.1",
   "tree-sitter-typescript==0.23.2",
-  "tree-sitter-rust==0.23.3",
+  "tree-sitter-rust==0.23.2",
   "tree-sitter-go==0.23.4",
 ]
 
