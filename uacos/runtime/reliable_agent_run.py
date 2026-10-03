@@ -21,6 +21,52 @@ def _last_reason(state: dict) -> str:
     return str(events[-1].get("reason") or state.get("status") or "runtime_stopped")
 
 
+def _prepare_resume(
+    repo_root: Path,
+    run_id: str,
+    task: str,
+    adapter_name: str,
+    requested_max_iterations: int,
+) -> tuple[dict, int, bool]:
+    state = load_run_state(repo_root, run_id)
+    if state.get("task") != task:
+        raise ValueError("resume_task_mismatch")
+    if state.get("status") in TERMINAL:
+        raise ValueError(f"terminal_run_not_resumable:{state['status']}")
+
+    persisted_max = int(state.get("max_iterations") or 0)
+    if persisted_max != int(requested_max_iterations):
+        raise ValueError("resume_max_iterations_mismatch")
+
+    persisted_adapter = str((state.get("metadata") or {}).get("adapter") or "")
+    if persisted_adapter and persisted_adapter != adapter_name:
+        raise ValueError("resume_adapter_mismatch")
+
+    iteration = int(state.get("iteration") or 0)
+    if iteration >= persisted_max:
+        state = transition_run(
+            repo_root,
+            run_id,
+            "failed",
+            reason="max_iterations_exhausted",
+            idempotency_key="resume:max_iterations_exhausted",
+        )
+        return state, persisted_max + 1, True
+
+    if state["status"] not in {"queued", "retrying"}:
+        state = transition_run(
+            repo_root,
+            run_id,
+            "retrying",
+            reason="resume_interrupted_run",
+            evidence={"interrupted_status": state["status"], "iteration": iteration},
+            idempotency_key=f"resume:{iteration}:retrying",
+        )
+
+    start_iteration = 1 if int(state.get("iteration") or 0) == 0 else int(state["iteration"]) + 1
+    return state, start_iteration, True
+
+
 def run_reliable_agent_harness(
     repo_root: Path,
     task: str,
@@ -36,8 +82,9 @@ def run_reliable_agent_harness(
     max_context_chars: int = 18000,
     run_id: str | None = None,
 ) -> dict:
-    """Run the normalized agent harness while durably persisting lifecycle state."""
+    """Run or resume the normalized agent harness with durable lifecycle state."""
     repo_root = repo_root.resolve()
+    adapter_name = str(getattr(adapter, "name", type(adapter).__name__))
     created = create_run_state(
         repo_root,
         task,
@@ -45,11 +92,33 @@ def run_reliable_agent_harness(
         deadline_seconds=deadline_seconds,
         run_id=run_id,
         metadata={
-            "adapter": str(getattr(adapter, "name", type(adapter).__name__)),
+            "adapter": adapter_name,
             "timeout_seconds": timeout_seconds,
         },
     )
     durable_run_id = str(created["run_id"])
+    resumed = bool(created.get("idempotent_replay"))
+    start_iteration = 1
+
+    if resumed:
+        state, start_iteration, _ = _prepare_resume(
+            repo_root,
+            durable_run_id,
+            task,
+            adapter_name,
+            max_iterations,
+        )
+        if state["status"] in TERMINAL:
+            return {
+                "status": state["status"],
+                "reason": _last_reason(state),
+                "run_id": durable_run_id,
+                "task": task,
+                "attempts": [],
+                "metrics": {"attempt_count": 0, "retry_count": 0, "resumed": True},
+                "durable_state": state,
+                "durable_status": state["status"],
+            }
 
     def cancelled() -> bool:
         return bool(load_run_state(repo_root, durable_run_id).get("cancel_requested"))
@@ -165,6 +234,7 @@ def run_reliable_agent_harness(
         run_id=durable_run_id,
         pre_iteration_check=pre_iteration,
         attempt_hook=record_attempt,
+        start_iteration=start_iteration,
     )
 
     state = load_run_state(repo_root, durable_run_id)
@@ -180,6 +250,8 @@ def run_reliable_agent_harness(
         )
         state = load_run_state(repo_root, durable_run_id)
 
+    report["metrics"]["resumed"] = resumed
+    report["policy"]["start_iteration"] = start_iteration
     report["durable_state"] = state
     report["durable_status"] = state["status"]
     return report
