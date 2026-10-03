@@ -51,6 +51,11 @@ def ingest_agent_output(repo_root: Path, task_file: Path, agent_output: Path) ->
         out["diff_file"] = str(diff_path)
     out["artifact_file"] = str(json_path)
 
+    # Persist the referenced artifact before the canonical event is appended. If the
+    # process crashes during ledger append, the ledger will never point at a file that
+    # was not created yet. The file is then rewritten once with its event ID.
+    json_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+
     event = append_evidence_event(
         repo_root,
         event_type="agent_artifact",
