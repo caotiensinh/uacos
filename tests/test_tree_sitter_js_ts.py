@@ -17,8 +17,9 @@ def _write(root: Path, rel: str, text: str) -> Path:
 def test_tree_sitter_dependencies_available_in_test_environment():
     assert tree_sitter_available() is True
     rows = {row["name"]: row for row in available_backends()}
-    assert rows["javascript_typescript_tree_sitter"]["available"] is True
-    assert rows["javascript_typescript_tree_sitter"]["semantic_level"] == "tree_sitter_ast"
+    assert rows["javascript_typescript"]["available"] is True
+    assert rows["javascript_typescript"]["semantic_level"] == "tree_sitter_ast"
+    assert rows["javascript_typescript"]["parser_engine"] == "tree_sitter"
 
 
 def test_tree_sitter_typescript_extracts_symbols_imports_and_callers(tmp_path: Path):
@@ -60,7 +61,7 @@ def test_tree_sitter_backend_is_authoritative_when_installed(tmp_path: Path):
     docs = parse_repo_languages(tmp_path)
     ts_docs = [row for row in docs if row["language"] == "typescript"]
     assert len(ts_docs) == 2
-    assert {row["backend"] for row in ts_docs} == {"javascript_typescript_tree_sitter"}
+    assert {row["backend"] for row in ts_docs} == {"javascript_typescript"}
     assert {row["semantic_level"] for row in ts_docs} == {"tree_sitter_ast"}
     assert {row["parser_engine"] for row in ts_docs} == {"tree_sitter"}
 
