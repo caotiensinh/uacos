@@ -15,7 +15,9 @@ def test_backend_registry_exposes_python_and_js_ts():
     backends = {row["name"]: row for row in available_backends()}
     assert backends["python_ast"]["semantic_level"] == "native_ast"
     assert set(backends["javascript_typescript"]["languages"]) == {"javascript", "typescript"}
-    assert backends["javascript_typescript"]["semantic_level"] == "structured_regex"
+    assert backends["javascript_typescript"]["semantic_level"] == "tree_sitter_ast"
+    assert backends["javascript_typescript"]["parser_engine"] == "tree_sitter"
+    assert backends["javascript_typescript"]["available"] is True
 
 
 def test_parse_repo_languages_combines_python_and_typescript(tmp_path: Path):
@@ -28,7 +30,8 @@ def test_parse_repo_languages_combines_python_and_typescript(tmp_path: Path):
     assert by_path["pkg/a.py"]["backend"] == "python_ast"
     assert by_path["pkg/a.py"]["semantic_level"] == "native_ast"
     assert by_path["src/b.ts"]["backend"] == "javascript_typescript"
-    assert by_path["src/b.ts"]["semantic_level"] == "structured_regex"
+    assert by_path["src/b.ts"]["semantic_level"] == "tree_sitter_ast"
+    assert by_path["src/b.ts"]["parser_engine"] == "tree_sitter"
 
 
 def test_semantic_graph_resolves_typescript_relative_import(tmp_path: Path):
