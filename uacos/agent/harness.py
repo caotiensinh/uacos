@@ -66,6 +66,7 @@ def run_agent_harness(
     pre_iteration_check: Callable[[int], tuple[str, str] | None] | None = None,
     attempt_hook: Callable[[dict], None] | None = None,
     no_progress_threshold: int = 2,
+    start_iteration: int = 1,
 ) -> dict:
     """Run a bounded external-agent loop through one normalized contract.
 
@@ -73,9 +74,13 @@ def run_agent_harness(
     safety gate. Runtime lifecycle hooks are optional so a durable orchestrator can
     persist progress without changing adapter semantics or duplicating this loop.
     Repeated identical outcomes stop early instead of burning the full retry budget.
+    `start_iteration` lets a durable orchestrator resume without replaying completed
+    iteration numbers.
     """
     if max_iterations < 1:
         raise ValueError("max_iterations_must_be_positive")
+    if start_iteration < 1:
+        raise ValueError("start_iteration_must_be_positive")
 
     repo_root = repo_root.resolve()
     allowed_files = list(allowed_files or [])
@@ -91,7 +96,7 @@ def run_agent_harness(
     final_reason = "max_iterations_exhausted"
     no_progress_stop: dict[str, Any] | None = None
 
-    for iteration in range(1, max_iterations + 1):
+    for iteration in range(start_iteration, max_iterations + 1):
         if cancel_check and cancel_check():
             final_status = "cancelled"
             final_reason = "cancel_requested"
@@ -185,9 +190,6 @@ def run_agent_harness(
         if attempt_status != "passed" and result.status not in {"cancelled", "blocked"}:
             progress = no_progress.observe(attempt)
             attempt["no_progress"] = progress
-            # Only classify this as a bounded no-progress stop when it actually
-            # saves a future iteration. If the same outcome is first detected on
-            # the final allowed iteration, preserve the historical terminal reason.
             if progress["stalled"] and iteration < max_iterations:
                 no_progress_stop = progress
                 final_status = "failed"
@@ -225,6 +227,7 @@ def run_agent_harness(
         "policy": {
             "validate_only": True,
             "max_iterations": max_iterations,
+            "start_iteration": start_iteration,
             "timeout_seconds": timeout_seconds,
             "allowed_files": allowed_files,
             "allowed_dirs": allowed_dirs,
