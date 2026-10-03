@@ -16,6 +16,10 @@ from uacos.ast_engine.tree_sitter_rust_go import (
     tree_sitter_go_available,
     tree_sitter_rust_available,
 )
+from uacos.ast_engine.tree_sitter_java import (
+    parse_repo_java_tree_sitter,
+    tree_sitter_java_available,
+)
 
 
 @dataclass(frozen=True)
@@ -44,7 +48,7 @@ def _filter_tests(docs: list[dict], include_tests: bool) -> list[dict]:
         rel = str(doc.get("path") or "").replace("\\", "/")
         lower = rel.lower()
         name = Path(rel).name.lower()
-        if "/test/" in f"/{lower}/" or "/tests/" in f"/{lower}/":
+        if "/test/" in f"/{lower}/" or "/tests/" in f"/{lower}/" or "/src/test/" in f"/{lower}/":
             continue
         if name.endswith((
             ".test.js", ".test.jsx", ".test.ts", ".test.tsx",
@@ -70,6 +74,10 @@ def _parse_rust_tree_sitter(repo_root: Path, include_tests: bool = True) -> list
 
 def _parse_go_tree_sitter(repo_root: Path, include_tests: bool = True) -> list[dict]:
     return _filter_tests(parse_repo_go_tree_sitter(repo_root), include_tests)
+
+
+def _parse_java_tree_sitter(repo_root: Path, include_tests: bool = True) -> list[dict]:
+    return _filter_tests(parse_repo_java_tree_sitter(repo_root), include_tests)
 
 
 BACKENDS: tuple[LanguageBackend, ...] = (
@@ -115,6 +123,15 @@ BACKENDS: tuple[LanguageBackend, ...] = (
         parse_repo=_parse_go_tree_sitter,
         parser_engine="tree_sitter",
         available=tree_sitter_go_available,
+    ),
+    LanguageBackend(
+        name="java",
+        languages=("java",),
+        extensions=(".java",),
+        semantic_level="tree_sitter_ast",
+        parse_repo=_parse_java_tree_sitter,
+        parser_engine="tree_sitter",
+        available=tree_sitter_java_available,
     ),
 )
 
