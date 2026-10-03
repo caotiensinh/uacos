@@ -30,6 +30,12 @@ def _repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "app.py").write_text("def target():\n    return 1\n", encoding="utf-8")
+    (repo / "README.md").write_text("Target application documentation.\n", encoding="utf-8")
+    (repo / "config.yaml").write_text("feature_toggle: target\n", encoding="utf-8")
+    (repo / "generated").mkdir()
+    (repo / "generated" / "generated_config.yaml").write_text("feature_toggle: target\n", encoding="utf-8")
+    (repo / "vendor").mkdir()
+    (repo / "vendor" / "foreign.md").write_text("target vendor documentation\n", encoding="utf-8")
     for index in range(8):
         (repo / f"noise_{index}.py").write_text(
             "\n".join(f"NOISE_{index}_{line} = {line}" for line in range(80)) + "\n",
@@ -47,11 +53,23 @@ def test_mode_contexts_are_distinct_and_traceable(tmp_path: Path):
 
     assert full_repo["truncated"] is False
     assert "app:target" in full_repo["selected_symbols"]
+    assert "README.md" in full_repo["selected_files"]
+    assert "config.yaml" in full_repo["selected_files"]
+    assert "generated/generated_config.yaml" not in full_repo["selected_files"]
+    assert "vendor/foreign.md" not in full_repo["selected_files"]
     assert "app.py" in grep["selected_files"]
     assert "app:target" in grep["selected_symbols"]
     assert "app.py" in uacos["selected_files"]
     assert "app:target" in uacos["selected_symbols"]
     assert full_repo["input_tokens_est"] > uacos["input_tokens_est"]
+
+
+def test_grep_baseline_can_find_non_graph_config_text(tmp_path: Path):
+    repo = _repo(tmp_path)
+    grep = build_mode_context(repo, "Change feature_toggle target", "grep")
+    assert "config.yaml" in grep["selected_files"]
+    assert "generated/generated_config.yaml" not in grep["selected_files"]
+    assert "vendor/foreign.md" not in grep["selected_files"]
 
 
 def test_real_comparative_suite_runs_same_provider_three_modes_three_repeats(tmp_path: Path):
