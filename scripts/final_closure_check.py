@@ -21,6 +21,20 @@ def _load_json(path: Path) -> tuple[dict | None, str | None]:
     return data, None
 
 
+def _real_comparative_pass(report: dict | None) -> bool:
+    if not report or report.get("status") != "pass":
+        return False
+    if report.get("real_provider_execution") is not True:
+        return False
+    if not str(report.get("provider") or "").strip():
+        return False
+    if not str(report.get("model") or "").strip():
+        return False
+    if int(report.get("repeats", 0) or 0) < 3:
+        return False
+    return True
+
+
 def evaluate_closure(
     repo_root: Path,
     *,
@@ -39,14 +53,21 @@ def evaluate_closure(
     real, real_error = _load_json(real_path)
     comparative, comp_error = _load_json(comp_path)
 
-    real_pass = bool(real and real.get("status") == "pass" and int(real.get("executed_count", 0) or 0) > 0 and int(real.get("passed_count", 0) or 0) == int(real.get("executed_count", 0) or 0))
-    comparative_pass = bool(comparative and comparative.get("status") == "pass")
+    real_pass = bool(
+        real
+        and real.get("status") == "pass"
+        and int(real.get("executed_count", 0) or 0) > 0
+        and int(real.get("passed_count", 0) or 0) == int(real.get("executed_count", 0) or 0)
+    )
+    comparative_pass = _real_comparative_pass(comparative)
 
     checks = {
         "real_agent_report_present": real_error is None,
         "real_agent_provider_execution_passed": real_pass,
         "comparative_report_present": comp_error is None,
         "comparative_benchmark_passed": comparative_pass,
+        "comparative_real_provider_execution": bool(comparative and comparative.get("real_provider_execution") is True),
+        "comparative_minimum_repeats": bool(comparative and int(comparative.get("repeats", 0) or 0) >= 3),
     }
 
     blockers: list[str] = []
@@ -57,7 +78,7 @@ def evaluate_closure(
     if comp_error:
         blockers.append(f"comparative_report:{comp_error}")
     elif not comparative_pass:
-        blockers.append("comparative_benchmark_not_passed")
+        blockers.append("real_comparative_benchmark_not_passed")
 
     implementation_status = "pass"
     evidence_status = "pass" if not blockers else "incomplete"
@@ -72,7 +93,7 @@ def evaluate_closure(
         "blockers": blockers,
         "real_agent_report": str(real_path),
         "comparative_report": str(comp_path),
-        "claim": "Implementation readiness is separate from real-world evidence. Strict closure passes only when real-provider E2E and the repeated comparative benchmark both pass.",
+        "claim": "Implementation readiness is separate from real-world evidence. Strict closure passes only when real-provider E2E and a provenance-marked repeated real-provider comparative benchmark both pass.",
     }
 
 
