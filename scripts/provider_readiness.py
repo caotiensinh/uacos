@@ -40,9 +40,8 @@ def evaluate_provider_readiness(env: dict[str, str] | None = None) -> dict:
             "executable": cfg["executable"],
             "resolved_path": resolved,
             "binary_available": bool(resolved),
-            "argv_env": cfg["argv_env"],
             "argv_configured": argv_valid,
-            "auth_envs_checked": list(cfg["auth_envs"]),
+            "auth_required": bool(cfg["auth_envs"]),
             "auth_detected": auth_present if cfg["auth_envs"] else None,
             "ready_for_real_e2e": not blockers,
             "blockers": blockers,
@@ -52,12 +51,12 @@ def evaluate_provider_readiness(env: dict[str, str] | None = None) -> dict:
         "status": "pass" if ready else "incomplete",
         "ready_providers": ready,
         "providers": rows,
-        "claim": "Readiness only means binary/argv/auth prerequisites appear present. It is not a real-provider E2E PASS.",
+        "claim": "Readiness only means binary/argv/auth prerequisites appear present. Secret names and values are omitted from the report. Readiness is not a real-provider E2E PASS.",
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Diagnose real coding-agent provider readiness without exposing secret values.")
+    parser = argparse.ArgumentParser(description="Diagnose real coding-agent provider readiness without exposing secret names or values.")
     parser.add_argument("--output", default="reports/provider_readiness.json")
     parser.add_argument("--require-ready", action="store_true")
     args = parser.parse_args()
