@@ -74,7 +74,7 @@ def ingest_agent_output(repo_root: Path, task_file: Path, agent_output: Path) ->
     json_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     return out
 
-def evidence_report_v2(repo_root: Path, task_file: Path, agent_output: Path | None = None, test_result: dict | None = None, token_summary: dict | None = None) -> str:
+def evidence_report_v2(repo_root: Path, task_file: Path, agent_output: Path | None = None, test_result: dict | None = None, token_summary: dict | None = None, claim_report: dict | None = None) -> str:
     task = load_task(task_file)
     artifact = ingest_agent_output(repo_root, task_file, agent_output) if agent_output else None
 
@@ -132,13 +132,33 @@ def evidence_report_v2(repo_root: Path, task_file: Path, agent_output: Path | No
         lines.append("- No token ledger summary supplied.")
     lines.append("")
 
+    lines.append("## Evidence-Bound Claims")
+    if claim_report:
+        supported = [item for item in claim_report.get("results", []) if item.get("status") == "SUPPORTED"]
+        blocked = [item for item in claim_report.get("results", []) if item.get("status") != "SUPPORTED"]
+        if supported:
+            for item in supported:
+                refs = ", ".join(item.get("accepted_event_ids") or item.get("evidence_event_ids") or [])
+                lines.append(f"- VERIFIED `{item.get('claim_id')}` / `{item.get('claim_type')}` -> evidence: {refs}")
+        else:
+            lines.append("- No supported factual claims.")
+        if blocked:
+            lines.append("- Blocked claims (not rendered as facts):")
+            for item in blocked:
+                lines.append(f"  - `{item.get('claim_id')}` -> {item.get('status')} ({item.get('reason')})")
+    else:
+        lines.append("- No claim-firewall report supplied; no agent claims are promoted to facts.")
+    lines.append("")
+
     final_status = "PASS"
     if artifact and artifact["status"] == "fail":
         final_status = "FAIL"
     if test_result and test_result["status"] == "fail":
         final_status = "FAIL"
-    if artifact and artifact["status"] == "partial":
+    if artifact and artifact["status"] == "partial" and final_status != "FAIL":
         final_status = "PARTIAL"
+    if claim_report and claim_report.get("status") != "pass" and final_status != "FAIL":
+        final_status = "BLOCKED"
 
     lines.append(f"## Final Status: {final_status}")
     lines.append("")
