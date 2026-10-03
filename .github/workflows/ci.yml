@@ -33,6 +33,7 @@ jobs:
       - name: Self check
         run: python scripts/uacos_self_check.py --summary
       - name: Release gate
+        if: matrix.python-version == '3.11'
         run: python scripts/release_gate.py
       - name: Upload reports on failure
         if: failure()
