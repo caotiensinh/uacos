@@ -9,8 +9,55 @@ from uacos.security.diff_parser import parse_unified_diff
 
 GENERIC_TASK_TOKENS = {"uacos", "module", "modules", "add", "fix", "update", "write", "handle", "type", "hints", "hint", "test", "docs", "class", "bug", "query", "endpoint"}
 
+# Scores are evidence weights, not probabilities. They are deliberately additive
+# so a file supported by several independent signals outranks a one-off match.
+EVIDENCE_WEIGHTS = {
+    "symbol_exact": 1.50,
+    "symbol_fuzzy": 1.10,
+    "graph_distance_0": 1.00,
+    "graph_distance_1": 0.70,
+    "graph_distance_2": 0.45,
+    "caller": 0.65,
+    "callee": 0.75,
+    "keyword": 0.55,
+}
+
+
 def _tokens(text: str) -> list[str]:
     return [t for t in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text) if len(t) >= 2]
+
+
+def _task_symbol_candidates(text: str) -> list[str]:
+    """Extract likely symbol references while preserving qualified names.
+
+    The legacy tokenizer only kept bare identifiers, losing useful task text such
+    as `pkg.mod:Class.method` or `Runner.run`. Keep those forms first, then add
+    ordinary identifiers as fallback candidates.
+    """
+    qualified = re.findall(
+        r"[A-Za-z_][A-Za-z0-9_]*(?:(?::|\.)[A-Za-z_][A-Za-z0-9_]*)+",
+        text,
+    )
+    bare = _tokens(text)
+    ordered = []
+    seen = set()
+    for token in qualified + bare:
+        if token.lower() in GENERIC_TASK_TOKENS or token in seen:
+            continue
+        seen.add(token)
+        ordered.append(token)
+    return ordered
+
+
+def _graph_weight(distance: int) -> float:
+    if distance <= 0:
+        return EVIDENCE_WEIGHTS["graph_distance_0"]
+    if distance == 1:
+        return EVIDENCE_WEIGHTS["graph_distance_1"]
+    if distance == 2:
+        return EVIDENCE_WEIGHTS["graph_distance_2"]
+    return max(0.10, 0.30 - ((distance - 3) * 0.05))
+
 
 def impact_by_symbol(repo_root: Path, symbol: str, depth: int = 2) -> dict:
     graph = load_graph(repo_root)
@@ -31,39 +78,134 @@ def impact_by_symbol(repo_root: Path, symbol: str, depth: int = 2) -> dict:
         if edge.get("target_file"):
             files[edge["target_file"]] = max(files.get(edge["target_file"], 0), 0.75)
     ranked = [{"file": f, "score": round(s, 4)} for f, s in files.items()]
-    ranked.sort(key=lambda x: x["score"], reverse=True)
+    ranked.sort(key=lambda x: (-x["score"], x["file"]))
     return {"status": "ok", "symbol": symbol, "impacted_files": ranked, "symbol_query": q}
+
 
 def impact_by_task(repo_root: Path, task: str, limit: int = 10, depth: int = 2) -> dict:
     graph = load_graph(repo_root)
-    scores = {}
-    reasons = {}
-    toks = _tokens(task)
-    for tok in toks:
-        if tok.lower() in GENERIC_TASK_TOKENS:
+    scores: dict[str, float] = {}
+    reasons: dict[str, list[str]] = {}
+    evidence: dict[str, list[dict]] = {}
+    symbol_hits = []
+    candidates = _task_symbol_candidates(task)
+
+    def add(file: str | None, weight: float, reason: str, payload: dict | None = None) -> None:
+        if not file:
+            return
+        rel = str(file).replace("\\", "/")
+        scores[rel] = scores.get(rel, 0.0) + float(weight)
+        reasons.setdefault(rel, []).append(reason)
+        item = {"kind": reason, "weight": round(float(weight), 4)}
+        if payload:
+            item.update(payload)
+        evidence.setdefault(rel, []).append(item)
+
+    matched_symbol_ids = set()
+    for token in candidates:
+        q = query_symbol(repo_root, token)
+        matches = q.get("matches", [])
+        if not matches:
             continue
-        q = query_symbol(repo_root, tok)
-        if q["matches"]:
-            sym_impact = impact_by_symbol(repo_root, tok, depth=depth)
-            for row in sym_impact["impacted_files"]:
-                scores[row["file"]] = max(scores.get(row["file"], 0), row["score"] + 0.5)
-                reasons.setdefault(row["file"], []).append(f"symbol:{tok}")
+
+        match_rows = []
+        for match in matches:
+            symbol_id = match.get("symbol_id")
+            if symbol_id:
+                matched_symbol_ids.add(symbol_id)
+            match_kind = str(match.get("match") or "fuzzy")
+            weight = EVIDENCE_WEIGHTS["symbol_exact"] if match_kind == "exact" else EVIDENCE_WEIGHTS["symbol_fuzzy"]
+            add(
+                match.get("file"),
+                weight,
+                f"symbol:{token}",
+                {"symbol_id": symbol_id, "match": match_kind},
+            )
+            match_rows.append(
+                {
+                    "query": token,
+                    "symbol_id": symbol_id,
+                    "file": match.get("file"),
+                    "match": match_kind,
+                    "ambiguous": bool(q.get("ambiguous")),
+                }
+            )
+
+            if match.get("file"):
+                rel = related_files(repo_root, match["file"], depth=depth)
+                for related in rel.get("related", []):
+                    distance = int(related.get("distance") or 0)
+                    add(
+                        related.get("file"),
+                        _graph_weight(distance),
+                        f"graph:{token}:d{distance}",
+                        {"source_file": match.get("file"), "distance": distance},
+                    )
+
+        symbol_hits.extend(match_rows)
+
+        # Explicit call-edge evidence is distinct from generic graph-neighbor
+        # evidence and should therefore add weight rather than merely replace it.
+        for edge in q.get("calls_to", []):
+            add(
+                edge.get("source_file"),
+                EVIDENCE_WEIGHTS["caller"],
+                f"caller_of:{token}",
+                {"source_symbol_id": edge.get("source_symbol_id")},
+            )
+            add(
+                edge.get("target_file"),
+                EVIDENCE_WEIGHTS["callee"],
+                f"callee:{token}",
+                {"target_symbol_id": edge.get("target_symbol_id")},
+            )
+        for edge in q.get("calls_from", []):
+            add(
+                edge.get("target_file"),
+                EVIDENCE_WEIGHTS["callee"],
+                f"called_by:{token}",
+                {"target_symbol_id": edge.get("target_symbol_id")},
+            )
 
     try:
-        hits = search_repo(repo_root, task, limit=limit)
+        hits = search_repo(repo_root, task, limit=max(limit * 2, limit))
     except Exception:
         hits = []
     for i, hit in enumerate(hits):
         rel = hit.get("path") or hit.get("file_path")
         if not rel:
             continue
-        score = max(0.1, 0.8 - i * 0.05)
-        scores[rel] = max(scores.get(rel, 0), score)
-        reasons.setdefault(rel, []).append("keyword_search")
+        # Preserve lexical search as a weaker, decaying signal. Files already
+        # supported by semantic/graph evidence receive an additive confirmation.
+        weight = max(0.10, EVIDENCE_WEIGHTS["keyword"] - i * 0.03)
+        add(rel, weight, "keyword_search", {"rank": i + 1})
 
-    ranked = [{"file": f, "score": round(s, 4), "reasons": reasons.get(f, [])} for f, s in scores.items()]
-    ranked.sort(key=lambda x: x["score"], reverse=True)
-    return {"status": "ok", "task": task, "impacted_files": ranked[:limit], "token_count": len(toks)}
+    ranked = []
+    for file, score in scores.items():
+        unique_reasons = list(dict.fromkeys(reasons.get(file, [])))
+        ranked.append(
+            {
+                "file": file,
+                "score": round(score, 4),
+                "reasons": unique_reasons,
+                "evidence_count": len(evidence.get(file, [])),
+                "evidence": evidence.get(file, []),
+            }
+        )
+    ranked.sort(key=lambda x: (-x["score"], -x["evidence_count"], x["file"]))
+
+    return {
+        "status": "ok",
+        "task": task,
+        "impacted_files": ranked[:limit],
+        "token_count": len(_tokens(task)),
+        "symbol_candidates": candidates,
+        "symbol_hits": symbol_hits,
+        "matched_symbol_ids": sorted(matched_symbol_ids),
+        "ranking_model": "evidence_weighted_v2",
+        "evidence_weights": dict(EVIDENCE_WEIGHTS),
+    }
+
 
 def smart_context(repo_root: Path, task: str, max_files: int = 8, max_chars: int = 18000) -> dict:
     impact = impact_by_task(repo_root, task, limit=max_files)
@@ -88,6 +230,7 @@ def smart_context(repo_root: Path, task: str, max_files: int = 8, max_chars: int
     out = out_dir / "latest_smart_context.md"
     out.write_text(content, encoding="utf-8")
     return {"status": "ok", "task": task, "included_files": included, "impact": impact, "context_file": str(out), "content": content, "char_count": len(content)}
+
 
 def impact_alignment_check(repo_root: Path, task: str, patch_file: Path, min_score: float = 0.15, limit: int = 50) -> dict:
     """Compare a patch's changed files against this task's dependency-graph impact ranking.
