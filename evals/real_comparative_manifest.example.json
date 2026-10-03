@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "repeats": 3,
+  "tasks": [
+    {
+      "id": "example-task",
+      "repo": "/absolute/path/to/repository",
+      "task": "Describe the concrete code change the provider must implement.",
+      "allowed_files": ["path/to/file.py"],
+      "allowed_dirs": [],
+      "tests": ["pytest -q tests/test_target.py"],
+      "required_symbols": ["module:TargetSymbol"],
+      "required_relations": [],
+      "max_iterations": 2,
+      "timeout_seconds": 180,
+      "max_files": 8,
+      "max_context_chars": 18000,
+      "full_repo_max_chars": 500000
+    }
+  ]
+}
