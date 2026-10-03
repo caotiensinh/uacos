@@ -78,7 +78,7 @@ def run_agent_harness(
     build_graph(repo_root)
     context = smart_context(repo_root, task, max_files=max_files, max_chars=max_context_chars)
     attempts: list[dict] = []
-    run_id: str | None = None
+    run_id = AgentRunRequest(task=task, context="").run_id
     final_status = "failed"
     final_reason = "max_iterations_exhausted"
 
@@ -94,7 +94,7 @@ def run_agent_harness(
             allowed_files=allowed_files,
             allowed_dirs=allowed_dirs,
             tests=tests,
-            run_id=run_id or AgentRunRequest(task=task, context="").run_id,
+            run_id=run_id,
             iteration=iteration,
             timeout_seconds=timeout_seconds,
             metadata={
@@ -107,7 +107,6 @@ def run_agent_harness(
                 ],
             },
         )
-        run_id = request.run_id
 
         started = time.monotonic()
         try:
@@ -176,7 +175,6 @@ def run_agent_harness(
             final_status = result.status
             break
 
-    assert run_id is not None
     totals = {
         "attempt_count": len(attempts),
         "retry_count": max(0, len(attempts) - 1),
