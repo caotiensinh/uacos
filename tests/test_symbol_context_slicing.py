@@ -97,7 +97,8 @@ def test_smart_context_prefers_symbol_slice_over_large_file_head(tmp_path: Path)
     result = smart_context(tmp_path, "fix pkg.service:critical_handler", max_files=2, max_chars=7000)
 
     assert result["status"] == "ok"
-    assert result["context_model"] == "semantic_symbol_slices_v1"
+    assert result["context_model"] == "dynamic_semantic_budget_v1"
+    assert result["context_plan"]["planner"] == "dynamic_semantic_budget_v1"
     assert result["symbol_slice_count"] >= 1
     assert "critical_handler" in result["content"]
     assert "FILLER_0" not in result["content"]

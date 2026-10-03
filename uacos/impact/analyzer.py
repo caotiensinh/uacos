@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from uacos.context.slicer import slice_symbols
+from uacos.context.planner import build_context_plan
 from uacos.graph.builder import load_graph
 from uacos.graph.query import related_files, query_symbol
 from uacos.search import search_repo
@@ -200,84 +200,54 @@ def impact_by_task(repo_root: Path, task: str, limit: int = 10, depth: int = 2) 
     }
 
 
-def _support_symbol_ids(impact: dict) -> list[str]:
-    ids = list(impact.get("matched_symbol_ids", []))
-    for row in impact.get("impacted_files", []):
-        for item in row.get("evidence", []):
-            for key in ("symbol_id", "source_symbol_id", "target_symbol_id"):
-                value = item.get(key)
-                if value:
-                    ids.append(str(value))
-    return list(dict.fromkeys(ids))
-
-
 def smart_context(repo_root: Path, task: str, max_files: int = 8, max_chars: int = 18000) -> dict:
-    impact = impact_by_task(repo_root, task, limit=max_files)
+    impact = impact_by_task(repo_root, task, limit=max_files * 2)
     lines = ["# UACOS Smart Context", "", f"Task: {task}", "", "## Impact Ranking"]
-    for row in impact["impacted_files"]:
+    for row in impact["impacted_files"][:max_files]:
         lines.append(f"- {row['file']} score={row['score']} reasons={','.join(row.get('reasons', []))}")
 
     base_chars = sum(len(x) for x in lines)
-    slice_budget = max(2000, min(12000, max_chars - base_chars))
-    sliced = slice_symbols(
+    plan_budget = max(1000, max_chars - base_chars - 600)
+    plan = build_context_plan(
         repo_root,
-        _support_symbol_ids(impact),
-        max_symbols=max(4, max_files * 2),
-        max_chars=slice_budget,
-        padding=2,
-        max_lines_per_symbol=160,
+        impact,
+        max_chars=plan_budget,
+        max_files=max_files,
+        max_symbols_per_file=2,
     )
 
     included = []
     included_files = set()
-    if sliced.get("slices"):
-        lines.extend(["", "## Semantic Symbol Slices"])
-        for row in sliced["slices"]:
-            chunk = (
-                f"### {row['symbol_id']}\n"
-                f"- file: {row['file']}\n"
-                f"- lines: {row['start_line']}-{row['end_line']}\n"
-                f"- kind: {row.get('kind')}\n"
-                f"```text\n{row.get('content', '')}\n```\n"
-            )
-            if sum(len(x) for x in lines) + len(chunk) > max_chars:
-                break
-            lines.append(chunk)
-            included_files.add(row["file"])
-            included.append(
-                {
-                    "file": row["file"],
-                    "symbol_id": row["symbol_id"],
-                    "start_line": row["start_line"],
-                    "end_line": row["end_line"],
-                    "mode": "symbol_slice",
-                }
-            )
-
-    # Supporting files without selected semantic symbols still get a small bounded
-    # excerpt. This preserves configs/docs and graph neighbors without reverting to
-    # large file-head dumps for semantic source files.
-    lines.extend(["", "## Supporting File Excerpts"])
-    for row in impact["impacted_files"][:max_files]:
-        rel = row["file"]
-        if rel in included_files:
-            continue
-        path = repo_root / rel
-        if not path.exists() or not path.is_file():
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        excerpt = text[:1200]
+    lines.extend(["", "## Planned Semantic Context"])
+    for entry in plan.get("entries", []):
+        role = str(entry.get("role") or "support")
+        title = entry.get("symbol_id") or entry.get("file")
         chunk = (
-            f"### {rel}\n"
-            f"- impact_score: {row.get('score')}\n"
-            f"- reasons: {', '.join(row.get('reasons', []))}\n"
-            f"```text\n{excerpt}\n```\n"
+            f"### {title}\n"
+            f"- file: {entry['file']}\n"
+            f"- role: {role}\n"
+            f"- mode: {entry.get('mode')}\n"
+            f"- lines: {entry.get('start_line')}-{entry.get('end_line')}\n"
+            f"- allocated_chars: {entry.get('allocated_chars')}\n"
+            f"- reasons: {', '.join(entry.get('reasons', []))}\n"
+            f"```text\n{entry.get('content', '')}\n```\n"
         )
         if sum(len(x) for x in lines) + len(chunk) > max_chars:
             continue
         lines.append(chunk)
-        included_files.add(rel)
-        included.append({"file": rel, "mode": "support_excerpt"})
+        included_files.add(entry["file"])
+        included.append(
+            {
+                "file": entry["file"],
+                "symbol_id": entry.get("symbol_id"),
+                "role": role,
+                "mode": entry.get("mode"),
+                "start_line": entry.get("start_line"),
+                "end_line": entry.get("end_line"),
+                "allocated_chars": entry.get("allocated_chars"),
+                "truncated_by_budget": bool(entry.get("truncated_by_budget")),
+            }
+        )
 
     content = "\n".join(lines)
     out_dir = repo_root / ".uacos" / "smart_context"
@@ -290,11 +260,18 @@ def smart_context(repo_root: Path, task: str, max_files: int = 8, max_chars: int
         "included_files": sorted(included_files),
         "included_context": included,
         "symbol_slice_count": len([x for x in included if x.get("mode") == "symbol_slice"]),
+        "role_counts": dict(plan.get("role_counts") or {}),
+        "budget_utilization": plan.get("utilization"),
         "impact": impact,
+        "context_plan": {
+            key: value
+            for key, value in plan.items()
+            if key != "entries"
+        },
         "context_file": str(out),
         "content": content,
         "char_count": len(content),
-        "context_model": "semantic_symbol_slices_v1",
+        "context_model": "dynamic_semantic_budget_v1",
     }
 
 
