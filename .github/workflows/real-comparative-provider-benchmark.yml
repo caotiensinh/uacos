@@ -5,6 +5,7 @@ on:
     paths:
       - "uacos/benchmarks/real_provider.py"
       - "scripts/run_real_comparative_benchmark.py"
+      - "scripts/run_real_provider_smoke_e2e.py"
       - "tests/test_real_comparative_provider_benchmark.py"
       - "evals/real_comparative_manifest.example.json"
       - ".github/workflows/real-comparative-provider-benchmark.yml"
@@ -26,7 +27,7 @@ on:
         default: "evals/real_comparative_manifest.example.json"
         type: string
       require_pass:
-        description: "Fail unless the comparative evaluator reaches PASS"
+        description: "Fail unless smoke E2E, comparative benchmark, and strict closure all PASS"
         required: false
         default: true
         type: boolean
@@ -73,6 +74,19 @@ jobs:
           python -m pip install -e .[test]
       - name: Provider readiness evidence
         run: python scripts/provider_readiness.py --output reports/provider_readiness.json
+      - name: Real-provider smoke E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          extra=()
+          if [[ '${{ inputs.require_pass }}' == 'true' ]]; then
+            extra+=(--require-pass)
+          fi
+          python scripts/run_real_provider_smoke_e2e.py \
+            --manifest '${{ inputs.manifest }}' \
+            --provider '${{ inputs.provider }}' \
+            --output reports/real-agent-e2e/summary.json \
+            "${extra[@]}"
       - name: Run repeated real-provider comparison
         shell: bash
         run: |
@@ -87,6 +101,15 @@ jobs:
             --model '${{ inputs.model }}' \
             --output-dir reports/real-comparative \
             "${extra[@]}"
+      - name: Stage comparative report for final closure
+        shell: bash
+        run: cp reports/real-comparative/comparative_ground_truth_benchmark.json reports/comparative_ground_truth_benchmark.json
+      - name: Strict final closure
+        if: ${{ inputs.require_pass }}
+        run: python scripts/final_closure_check.py --repo . --strict-evidence
+      - name: Non-strict final closure evidence
+        if: ${{ !inputs.require_pass }}
+        run: python scripts/final_closure_check.py --repo .
       - name: Upload real comparative evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -94,6 +117,9 @@ jobs:
           name: real-comparative-${{ github.run_id }}
           path: |
             reports/provider_readiness.json
+            reports/real-agent-e2e/
             reports/real-comparative/
+            reports/comparative_ground_truth_benchmark.json
+            reports/final_closure_report.json
           if-no-files-found: warn
           retention-days: 90
