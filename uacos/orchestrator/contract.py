@@ -6,6 +6,8 @@ import json
 
 MAX_SAFE_ITERATIONS = 10
 DEFAULT_ITERATIONS = 3
+MAX_SAFE_TOOL_CALLS = 500
+MAX_SAFE_TOKENS = 2_000_000
 
 CORE_PILLARS = [
     {
@@ -104,9 +106,30 @@ def _bounded_iterations(value) -> int:
     return min(n, MAX_SAFE_ITERATIONS)
 
 
+def _bounded_nonnegative(value, maximum: int, default: int | None = None) -> int | None:
+    if value is None:
+        return default
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    if n < 0:
+        return default
+    return min(n, maximum)
+
+
+def _clean_strings(values: list[str] | None) -> list[str]:
+    return [str(v).strip() for v in (values or []) if str(v).strip()]
+
+
 def _stable_plan_id(payload: dict) -> str:
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return "ORCH-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+
+
+def _stable_contract_id(payload: dict) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "CONTRACT-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def get_orchestration_contract(section: str | None = None) -> dict:
@@ -122,6 +145,18 @@ def get_orchestration_contract(section: str | None = None) -> dict:
             "max_safe_iterations": MAX_SAFE_ITERATIONS,
             "requires_tests_for_done": True,
             "requires_recorded_evidence": True,
+        },
+        "phase3_contract_v2": {
+            "machine_readable_done": True,
+            "required_sections": [
+                "scope",
+                "success_conditions",
+                "required_evidence",
+                "budgets",
+                "approval",
+            ],
+            "done_states": ["done", "not_done", "unknown"],
+            "fail_closed_on_missing_required_evidence": True,
         },
     }
     if section is None:
@@ -142,8 +177,8 @@ def build_orchestration_plan(spec: str, agents: list[str] | None = None, tests: 
         return {"status": "error", "reason": "spec_required"}
 
     bounded_iterations = _bounded_iterations(max_iterations)
-    tests = [t for t in (tests or []) if str(t).strip()]
-    agents = [a for a in (agents or []) if str(a).strip()]
+    tests = _clean_strings(tests)
+    agents = _clean_strings(agents)
 
     warnings = []
     if not tests:
@@ -182,6 +217,132 @@ def build_orchestration_plan(spec: str, agents: list[str] | None = None, tests: 
             "tests_passed_or_explicit_validation_evidence",
             "result_recorded",
         ],
+    }
+
+
+def build_task_contract_v2(
+    spec: str,
+    *,
+    allowed_files: list[str] | None = None,
+    allowed_dirs: list[str] | None = None,
+    forbidden_side_effects: list[str] | None = None,
+    required_tests: list[str] | None = None,
+    required_evidence: list[str] | None = None,
+    runtime_checks: list[str] | None = None,
+    outcome_checks: list[str] | None = None,
+    max_iterations: int | None = None,
+    max_tokens: int | None = None,
+    max_tool_calls: int | None = None,
+    human_approval_conditions: list[str] | None = None,
+) -> dict:
+    """Build an additive Phase-3 task contract without changing legacy orchestration APIs.
+
+    The contract is declarative. It does not execute tests, mutate the repository, or trust
+    an agent's completion claim. Final completion must be computed by evaluate_done_predicate().
+    """
+    spec = (spec or "").strip()
+    if not spec:
+        return {"status": "error", "reason": "spec_required"}
+
+    tests = _clean_strings(required_tests)
+    evidence = _clean_strings(required_evidence)
+    runtime = _clean_strings(runtime_checks)
+    outcomes = _clean_strings(outcome_checks)
+    scope_files = _clean_strings(allowed_files)
+    scope_dirs = _clean_strings(allowed_dirs)
+    forbidden = _clean_strings(forbidden_side_effects)
+    approvals = _clean_strings(human_approval_conditions)
+
+    success_conditions = {
+        "tests": tests,
+        "runtime": runtime,
+        "outcome": outcomes,
+        "forbidden_side_effects_absent": forbidden,
+        "result_recorded": True,
+        "unsupported_claims_absent": True,
+    }
+    payload = {
+        "spec": spec,
+        "scope": {"allowed_files": scope_files, "allowed_dirs": scope_dirs},
+        "forbidden_side_effects": forbidden,
+        "success_conditions": success_conditions,
+        "required_evidence": evidence,
+        "budgets": {
+            "max_iterations": _bounded_iterations(max_iterations),
+            "max_tokens": _bounded_nonnegative(max_tokens, MAX_SAFE_TOKENS),
+            "max_tool_calls": _bounded_nonnegative(max_tool_calls, MAX_SAFE_TOOL_CALLS),
+        },
+        "approval": {"human_approval_conditions": approvals},
+    }
+    warnings = []
+    if not tests and not runtime and not outcomes:
+        warnings.append("no_verification_conditions_done_will_be_unknown")
+    if not evidence:
+        warnings.append("required_evidence_missing_done_will_be_blocked")
+    if not scope_files and not scope_dirs:
+        warnings.append("mutation_scope_empty")
+
+    return {
+        "status": "ok",
+        "version": 2,
+        "contract_id": _stable_contract_id(payload),
+        **payload,
+        "done_predicate": {
+            "all_success_conditions_must_pass": True,
+            "all_required_evidence_must_exist": True,
+            "no_unsupported_claims": True,
+            "unknown_is_not_pass": True,
+        },
+        "warnings": warnings,
+    }
+
+
+def evaluate_done_predicate(contract: dict, observed: dict) -> dict:
+    """Evaluate task completion from observed evidence/state, never from agent prose.
+
+    observed accepts: passed_tests/runtime_checks/outcome_checks/evidence as iterables,
+    forbidden_side_effects as observed violations, result_recorded bool, and
+    unsupported_claims as a list. Missing observations are treated as incomplete.
+    """
+    if contract.get("status") != "ok" or contract.get("version") != 2:
+        return {"status": "error", "reason": "task_contract_v2_required"}
+
+    success = contract.get("success_conditions") or {}
+    required = set(contract.get("required_evidence") or [])
+    observed_evidence = set(observed.get("evidence") or [])
+
+    checks = {
+        "tests": set(success.get("tests") or []).issubset(set(observed.get("passed_tests") or [])),
+        "runtime": set(success.get("runtime") or []).issubset(set(observed.get("runtime_checks") or [])),
+        "outcome": set(success.get("outcome") or []).issubset(set(observed.get("outcome_checks") or [])),
+        "required_evidence": required.issubset(observed_evidence),
+        "forbidden_side_effects_absent": not bool(observed.get("forbidden_side_effects") or []),
+        "result_recorded": observed.get("result_recorded") is True,
+        "unsupported_claims_absent": not bool(observed.get("unsupported_claims") or []),
+    }
+
+    has_verification_conditions = bool(success.get("tests") or success.get("runtime") or success.get("outcome"))
+    missing_evidence = sorted(required - observed_evidence)
+    failed_checks = sorted(name for name, ok in checks.items() if not ok)
+
+    if not has_verification_conditions:
+        state = "unknown"
+        reason = "no_verification_conditions"
+    elif failed_checks:
+        state = "not_done"
+        reason = "done_predicate_failed"
+    else:
+        state = "done"
+        reason = "all_required_conditions_verified"
+
+    return {
+        "status": "ok",
+        "state": state,
+        "reason": reason,
+        "checks": checks,
+        "missing_evidence": missing_evidence,
+        "failed_checks": failed_checks,
+        "contract_id": contract.get("contract_id"),
     }
 
 
