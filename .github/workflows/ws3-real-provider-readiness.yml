@@ -34,6 +34,32 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .[test]
+      - name: Probe provider CLI and cached auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_home=$HOME"
+          for exe in codex claude goose; do
+            if path="$(command -v "$exe" 2>/dev/null)"; then
+              echo "$exe.path=$path"
+            else
+              echo "$exe.path=missing"
+            fi
+          done
+          echo "common-path scan:"
+          find "$HOME" /opt /usr/local/bin /usr/bin -maxdepth 5 \( -type f -o -type l \) \( -name codex -o -name claude -o -name goose \) -print 2>/dev/null | head -100 || true
+          for entry in \
+            "$HOME/.codex/auth.json" \
+            "$HOME/.codex" \
+            "$HOME/.claude" \
+            "$HOME/.config/claude" \
+            "$HOME/.config/goose"; do
+            if [[ -e "$entry" ]]; then
+              echo "cached_auth_present:$entry"
+            else
+              echo "cached_auth_missing:$entry"
+            fi
+          done
       - name: Provider readiness evidence
         run: python scripts/provider_readiness.py --output reports/provider_readiness.json --require-ready
       - name: Upload readiness evidence
