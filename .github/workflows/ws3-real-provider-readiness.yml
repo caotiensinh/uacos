@@ -1,0 +1,46 @@
+name: WS3 real-provider readiness evidence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ws3-real-provider-readiness.yml"
+      - "scripts/provider_readiness.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ws3-readiness-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    env:
+      UACOS_CODEX_ARGV_JSON: ${{ secrets.UACOS_CODEX_ARGV_JSON }}
+      UACOS_CLAUDE_CODE_ARGV_JSON: ${{ secrets.UACOS_CLAUDE_CODE_ARGV_JSON }}
+      UACOS_GOOSE_ARGV_JSON: ${{ secrets.UACOS_GOOSE_ARGV_JSON }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[test]
+      - name: Provider readiness evidence
+        run: python scripts/provider_readiness.py --output reports/provider_readiness.json --require-ready
+      - name: Upload readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws3-provider-readiness-${{ github.run_id }}
+          path: reports/provider_readiness.json
+          if-no-files-found: error
+          retention-days: 30
