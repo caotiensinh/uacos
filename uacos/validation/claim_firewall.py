@@ -230,7 +230,12 @@ def evaluate_claims(repo_root: Path, claims: list[dict[str, Any]]) -> dict[str, 
 
 
 def evaluate_and_record_claim(repo_root: Path, claim: dict[str, Any]) -> dict[str, Any]:
-    result = evaluate_claim(repo_root, claim)
+    result = dict(evaluate_claim(repo_root, claim))
+    if result.get("reason") == "evidence_ledger_invalid":
+        result["decision_event_id"] = None
+        result["decision_recorded"] = False
+        return result
+
     event = append_evidence_event(
         repo_root,
         event_type="claim_decision",
@@ -245,8 +250,8 @@ def evaluate_and_record_claim(repo_root: Path, claim: dict[str, Any]) -> dict[st
             "reason": result.get("reason"),
         },
     )
-    result = dict(result)
     result["decision_event_id"] = event["event_id"]
+    result["decision_recorded"] = True
     return result
 
 
