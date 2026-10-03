@@ -13,6 +13,7 @@ UACOS is **not a Goose clone or general chat/coding agent**. External agents pro
 - [Documentation Index](docs/README.md)
 - [Current Status](docs/CURRENT_STATUS.md)
 - [Production Improvement Checklist](docs/PRODUCTION_IMPROVEMENT_CHECKLIST.md)
+- [Final Closure Checklist](docs/FINAL_CLOSURE_CHECKLIST.md)
 - [Strategic Status](docs/STRATEGIC_STATUS.md)
 - [Language Policy](docs/LANGUAGE_POLICY.md)
 
@@ -68,6 +69,7 @@ Existing `uacos ...` commands remain available for lower-level and backward-comp
 - Real HTTP JSON-RPC MCP client with timeout/payload bounds, pagination guards, request-id validation, and localhost network E2E.
 - Evidence-first real-agent E2E runner for Codex CLI, Claude Code, and Goose when explicitly installed/configured.
 - Comparative ground-truth benchmark evaluator for `full_repo` vs `grep` vs `uacos`.
+- Machine-checkable final closure gate that keeps implementation readiness separate from real-provider and benchmark evidence.
 
 ## Useful commands
 
@@ -77,6 +79,8 @@ uacos-flow status --repo .
 uacos-flow prepare --repo . --summary
 uacos-flow orchestrate --spec "upgrade safely until tests pass" --agent goose --test "pytest -q" --max-iterations 3
 uacos-flow benchmark --repo . --manifest evals/benchmark_suite.json
+python scripts/provider_readiness.py
+python scripts/final_closure_check.py --repo .
 ```
 
 ## Evidence and claims
@@ -100,7 +104,10 @@ Depending on the workflow, UACOS writes evidence including:
 - `reports/uacos_performance_report.json`
 - `reports/uacos_benchmark_suite_report.json`
 - `reports/release_gate_report.json`
+- `reports/provider_readiness.json`
 - `reports/real-agent-e2e/summary.json`
+- `reports/comparative_ground_truth_benchmark.json`
+- `reports/final_closure_report.json`
 - `.uacos/real_agent_e2e/`
 - `.uacos/run_state/`
 - `.uacos/replay/`
