@@ -185,7 +185,10 @@ def run_agent_harness(
         if attempt_status != "passed" and result.status not in {"cancelled", "blocked"}:
             progress = no_progress.observe(attempt)
             attempt["no_progress"] = progress
-            if progress["stalled"]:
+            # Only classify this as a bounded no-progress stop when it actually
+            # saves a future iteration. If the same outcome is first detected on
+            # the final allowed iteration, preserve the historical terminal reason.
+            if progress["stalled"] and iteration < max_iterations:
                 no_progress_stop = progress
                 final_status = "failed"
                 final_reason = "no_progress_repeated_identical_outcome"
