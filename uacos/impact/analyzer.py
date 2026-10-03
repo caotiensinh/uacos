@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+
+from uacos.context.slicer import slice_symbols
 from uacos.graph.builder import load_graph
 from uacos.graph.query import related_files, query_symbol
 from uacos.search import search_repo
@@ -28,12 +30,7 @@ def _tokens(text: str) -> list[str]:
 
 
 def _task_symbol_candidates(text: str) -> list[str]:
-    """Extract likely symbol references while preserving qualified names.
-
-    The legacy tokenizer only kept bare identifiers, losing useful task text such
-    as `pkg.mod:Class.method` or `Runner.run`. Keep those forms first, then add
-    ordinary identifiers as fallback candidates.
-    """
+    """Extract likely symbol references while preserving qualified names."""
     qualified = re.findall(
         r"[A-Za-z_][A-Za-z0-9_]*(?:(?::|\.)[A-Za-z_][A-Za-z0-9_]*)+",
         text,
@@ -83,7 +80,7 @@ def impact_by_symbol(repo_root: Path, symbol: str, depth: int = 2) -> dict:
 
 
 def impact_by_task(repo_root: Path, task: str, limit: int = 10, depth: int = 2) -> dict:
-    graph = load_graph(repo_root)
+    load_graph(repo_root)
     scores: dict[str, float] = {}
     reasons: dict[str, list[str]] = {}
     evidence: dict[str, list[dict]] = {}
@@ -144,8 +141,6 @@ def impact_by_task(repo_root: Path, task: str, limit: int = 10, depth: int = 2) 
 
         symbol_hits.extend(match_rows)
 
-        # Explicit call-edge evidence is distinct from generic graph-neighbor
-        # evidence and should therefore add weight rather than merely replace it.
         for edge in q.get("calls_to", []):
             add(
                 edge.get("source_file"),
@@ -175,8 +170,6 @@ def impact_by_task(repo_root: Path, task: str, limit: int = 10, depth: int = 2) 
         rel = hit.get("path") or hit.get("file_path")
         if not rel:
             continue
-        # Preserve lexical search as a weaker, decaying signal. Files already
-        # supported by semantic/graph evidence receive an additive confirmation.
         weight = max(0.10, EVIDENCE_WEIGHTS["keyword"] - i * 0.03)
         add(rel, weight, "keyword_search", {"rank": i + 1})
 
@@ -207,29 +200,102 @@ def impact_by_task(repo_root: Path, task: str, limit: int = 10, depth: int = 2) 
     }
 
 
+def _support_symbol_ids(impact: dict) -> list[str]:
+    ids = list(impact.get("matched_symbol_ids", []))
+    for row in impact.get("impacted_files", []):
+        for item in row.get("evidence", []):
+            for key in ("symbol_id", "source_symbol_id", "target_symbol_id"):
+                value = item.get(key)
+                if value:
+                    ids.append(str(value))
+    return list(dict.fromkeys(ids))
+
+
 def smart_context(repo_root: Path, task: str, max_files: int = 8, max_chars: int = 18000) -> dict:
     impact = impact_by_task(repo_root, task, limit=max_files)
     lines = ["# UACOS Smart Context", "", f"Task: {task}", "", "## Impact Ranking"]
     for row in impact["impacted_files"]:
         lines.append(f"- {row['file']} score={row['score']} reasons={','.join(row.get('reasons', []))}")
-    lines.append("")
+
+    base_chars = sum(len(x) for x in lines)
+    slice_budget = max(2000, min(12000, max_chars - base_chars))
+    sliced = slice_symbols(
+        repo_root,
+        _support_symbol_ids(impact),
+        max_symbols=max(4, max_files * 2),
+        max_chars=slice_budget,
+        padding=2,
+        max_lines_per_symbol=160,
+    )
+
     included = []
+    included_files = set()
+    if sliced.get("slices"):
+        lines.extend(["", "## Semantic Symbol Slices"])
+        for row in sliced["slices"]:
+            chunk = (
+                f"### {row['symbol_id']}\n"
+                f"- file: {row['file']}\n"
+                f"- lines: {row['start_line']}-{row['end_line']}\n"
+                f"- kind: {row.get('kind')}\n"
+                f"```text\n{row.get('content', '')}\n```\n"
+            )
+            if sum(len(x) for x in lines) + len(chunk) > max_chars:
+                break
+            lines.append(chunk)
+            included_files.add(row["file"])
+            included.append(
+                {
+                    "file": row["file"],
+                    "symbol_id": row["symbol_id"],
+                    "start_line": row["start_line"],
+                    "end_line": row["end_line"],
+                    "mode": "symbol_slice",
+                }
+            )
+
+    # Supporting files without selected semantic symbols still get a small bounded
+    # excerpt. This preserves configs/docs and graph neighbors without reverting to
+    # large file-head dumps for semantic source files.
+    lines.extend(["", "## Supporting File Excerpts"])
     for row in impact["impacted_files"][:max_files]:
-        path = repo_root / row["file"]
+        rel = row["file"]
+        if rel in included_files:
+            continue
+        path = repo_root / rel
         if not path.exists() or not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        chunk = f"## File: {row['file']}\n\n```text\n{text[:3500]}\n```\n"
+        excerpt = text[:1200]
+        chunk = (
+            f"### {rel}\n"
+            f"- impact_score: {row.get('score')}\n"
+            f"- reasons: {', '.join(row.get('reasons', []))}\n"
+            f"```text\n{excerpt}\n```\n"
+        )
         if sum(len(x) for x in lines) + len(chunk) > max_chars:
-            break
+            continue
         lines.append(chunk)
-        included.append(row["file"])
+        included_files.add(rel)
+        included.append({"file": rel, "mode": "support_excerpt"})
+
     content = "\n".join(lines)
     out_dir = repo_root / ".uacos" / "smart_context"
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "latest_smart_context.md"
     out.write_text(content, encoding="utf-8")
-    return {"status": "ok", "task": task, "included_files": included, "impact": impact, "context_file": str(out), "content": content, "char_count": len(content)}
+    return {
+        "status": "ok",
+        "task": task,
+        "included_files": sorted(included_files),
+        "included_context": included,
+        "symbol_slice_count": len([x for x in included if x.get("mode") == "symbol_slice"]),
+        "impact": impact,
+        "context_file": str(out),
+        "content": content,
+        "char_count": len(content),
+        "context_model": "semantic_symbol_slices_v1",
+    }
 
 
 def impact_alignment_check(repo_root: Path, task: str, patch_file: Path, min_score: float = 0.15, limit: int = 50) -> dict:
