@@ -19,7 +19,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
     env:
-      UACOS_CODEX_ARGV_JSON: ${{ secrets.UACOS_CODEX_ARGV_JSON }}
+      UACOS_CODEX_ARGV_JSON: '["codex","exec","--sandbox","read-only","--ephemeral","--ignore-user-config","--skip-git-repo-check","-"]'
       UACOS_CLAUDE_CODE_ARGV_JSON: ${{ secrets.UACOS_CLAUDE_CODE_ARGV_JSON }}
       UACOS_GOOSE_ARGV_JSON: ${{ secrets.UACOS_GOOSE_ARGV_JSON }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
