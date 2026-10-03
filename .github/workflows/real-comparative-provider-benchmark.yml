@@ -1,0 +1,99 @@
+name: Real comparative provider benchmark
+
+on:
+  pull_request:
+    paths:
+      - "uacos/benchmarks/real_provider.py"
+      - "scripts/run_real_comparative_benchmark.py"
+      - "tests/test_real_comparative_provider_benchmark.py"
+      - "evals/real_comparative_manifest.example.json"
+      - ".github/workflows/real-comparative-provider-benchmark.yml"
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Configured real provider"
+        required: true
+        default: "codex"
+        type: choice
+        options: [codex, claude_code, goose]
+      model:
+        description: "Exact provider/model label used for every observation"
+        required: true
+        type: string
+      manifest:
+        description: "Manifest path on the checked-out repository; repo fields may point to runner-local repositories"
+        required: true
+        default: "evals/real_comparative_manifest.example.json"
+        type: string
+      require_pass:
+        description: "Fail unless the comparative evaluator reaches PASS"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[test]
+      - name: Targeted real-comparative contract tests
+        run: python -m pytest -q tests/test_real_comparative_provider_benchmark.py
+
+  real-provider:
+    if: github.event_name == 'workflow_dispatch'
+    needs: contract
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 120
+    env:
+      UACOS_CODEX_ARGV_JSON: ${{ secrets.UACOS_CODEX_ARGV_JSON }}
+      UACOS_CLAUDE_CODE_ARGV_JSON: ${{ secrets.UACOS_CLAUDE_CODE_ARGV_JSON }}
+      UACOS_GOOSE_ARGV_JSON: ${{ secrets.UACOS_GOOSE_ARGV_JSON }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[test]
+      - name: Provider readiness evidence
+        run: python scripts/provider_readiness.py --output reports/provider_readiness.json
+      - name: Run repeated real-provider comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          extra=()
+          if [[ '${{ inputs.require_pass }}' == 'true' ]]; then
+            extra+=(--require-pass)
+          fi
+          python scripts/run_real_comparative_benchmark.py \
+            --manifest '${{ inputs.manifest }}' \
+            --provider '${{ inputs.provider }}' \
+            --model '${{ inputs.model }}' \
+            --output-dir reports/real-comparative \
+            "${extra[@]}"
+      - name: Upload real comparative evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-comparative-${{ github.run_id }}
+          path: |
+            reports/provider_readiness.json
+            reports/real-comparative/
+          if-no-files-found: warn
+          retention-days: 90
