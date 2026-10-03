@@ -8,6 +8,7 @@ from uacos.agent.task import load_task
 from uacos.execution.diff_extract import extract_unified_diff
 from uacos.security.patch_gate import validate_patch_text
 from uacos.execution.failed_memory import record_failure
+from uacos.execution.evidence_ledger import append_evidence_event, hash_text
 
 def utcnow():
     return datetime.now(timezone.utc).isoformat()
@@ -45,11 +46,32 @@ def ingest_agent_output(repo_root: Path, task_file: Path, agent_output: Path) ->
     base = evidence_dir(repo_root) / f"{task['id']}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     json_path = base.with_suffix(".artifact.json")
     diff_path = base.with_suffix(".diff")
-    json_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     if diff:
         diff_path.write_text(diff, encoding="utf-8")
         out["diff_file"] = str(diff_path)
     out["artifact_file"] = str(json_path)
+
+    # Persist the referenced artifact before the canonical event is appended. If the
+    # process crashes during ledger append, the ledger will never point at a file that
+    # was not created yet. The file is then rewritten once with its event ID.
+    json_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    event = append_evidence_event(
+        repo_root,
+        event_type="agent_artifact",
+        source="artifacts",
+        status=status,
+        task_id=task["id"],
+        input_hash=hash_text(text),
+        diff_hash=hash_text(diff) if diff else None,
+        evidence_refs=[str(json_path)] + ([str(diff_path)] if diff else []),
+        data={
+            "has_diff": bool(diff),
+            "patch_check_status": patch_check.get("status") if patch_check else None,
+        },
+    )
+    out["evidence_event_id"] = event["event_id"]
+    json_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     return out
 
 def evidence_report_v2(repo_root: Path, task_file: Path, agent_output: Path | None = None, test_result: dict | None = None, token_summary: dict | None = None) -> str:
@@ -77,6 +99,7 @@ def evidence_report_v2(repo_root: Path, task_file: Path, agent_output: Path | No
         lines.append(f"- Status: **{artifact['status']}**")
         lines.append(f"- Has diff: `{artifact['has_diff']}`")
         lines.append(f"- Artifact file: `{artifact['artifact_file']}`")
+        lines.append(f"- Evidence event: `{artifact['evidence_event_id']}`")
         if artifact.get("diff_file"):
             lines.append(f"- Diff file: `{artifact['diff_file']}`")
         if artifact.get("patch_check"):
@@ -91,6 +114,8 @@ def evidence_report_v2(repo_root: Path, task_file: Path, agent_output: Path | No
     if test_result:
         lines.append(f"- Status: **{test_result['status']}**")
         lines.append(f"- Result file: `{test_result.get('result_file')}`")
+        if test_result.get("evidence_event_ids"):
+            lines.append(f"- Evidence events: {', '.join(test_result['evidence_event_ids'])}")
         for r in test_result.get("results", []):
             lines.append(f"  - `{r['command']}` -> {r['status']} ({r.get('reason')})")
     else:

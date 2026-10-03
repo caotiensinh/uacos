@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 from datetime import datetime, timezone
 from uacos.config import uacos_dir
+from uacos.execution.evidence_ledger import append_evidence_event
 
 def utcnow():
     return datetime.now(timezone.utc).isoformat()
@@ -32,6 +33,22 @@ def log_token_usage(repo_root: Path, task_id: str, agent: str, model: str, input
     }
     with ledger_path(repo_root).open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    event = append_evidence_event(
+        repo_root,
+        event_type="token_usage",
+        source="token_ledger",
+        status="recorded",
+        task_id=task_id,
+        token_usage={
+            "agent": agent,
+            "model": model,
+            "input_tokens": int(input_tokens),
+            "output_tokens": int(output_tokens),
+            "estimated_cost_usd": record["estimated_cost_usd"],
+        },
+        evidence_refs=[context_id] if context_id else [],
+    )
+    record["evidence_event_id"] = event["event_id"]
     return record
 
 def read_ledger(repo_root: Path) -> list:
