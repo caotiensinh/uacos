@@ -30,10 +30,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install
+      - name: Install UACOS
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .[test]
+      - name: Bootstrap Codex CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          prefix="$RUNNER_TEMP/uacos-codex"
+          npm install --prefix "$prefix" @openai/codex@latest
+          bin="$prefix/node_modules/.bin"
+          echo "$bin" >> "$GITHUB_PATH"
+          "$bin/codex" --version
+          "$bin/codex" exec --help
       - name: Probe provider CLI and cached auth
         shell: bash
         run: |
