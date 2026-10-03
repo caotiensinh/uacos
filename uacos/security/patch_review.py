@@ -18,13 +18,19 @@ def _has_any(text: str, needles: Iterable[str]) -> bool:
     return any(needle.lower() in low for needle in needles)
 
 
-def _risk_level(categories: list[str], validation: dict) -> str:
+def _risk_level(categories: list[str], validation: dict, semantic_risk: dict | None = None) -> str:
     if validation.get("status") == "fail":
         return "block"
+    if semantic_risk and semantic_risk.get("risk_level") == "critical":
+        return "critical"
     high = {"auth_change", "network_call", "ci_release_change", "dependency_change", "sensitive_config_change"}
     if any(category in high for category in categories):
         return "high"
+    if semantic_risk and semantic_risk.get("risk_level") == "high":
+        return "high"
     if "broad_rewrite" in categories or "many_removed_lines" in categories:
+        return "medium"
+    if semantic_risk and semantic_risk.get("risk_level") == "medium":
         return "medium"
     return "low"
 
@@ -60,19 +66,29 @@ def classify_file_patch(path: str, added_lines: list[str], removed_lines: list[s
     }
 
 
-def review_patch_text(patch_text: str, allowed_files=None, allowed_dirs=None, tests=None) -> dict:
+def review_patch_text(patch_text: str, allowed_files=None, allowed_dirs=None, tests=None, repo_root: Path | None = None) -> dict:
     validation = validate_patch_text(patch_text, allowed_files=allowed_files or [], allowed_dirs=allowed_dirs or [])
     patches = parse_unified_diff(patch_text)
     file_reviews = [classify_file_patch(fp.path, fp.added_lines, fp.removed_lines) for fp in patches]
     categories = sorted({category for review in file_reviews for category in review["categories"]})
-    risk_level = _risk_level(categories, validation)
+
+    semantic_risk = None
+    semantic_error = None
+    if repo_root is not None and validation.get("status") != "fail":
+        try:
+            from uacos.security.semantic_diff_risk import assess_semantic_diff_risk
+            semantic_risk = assess_semantic_diff_risk(Path(repo_root), patch_text)
+        except Exception as exc:
+            semantic_error = f"{type(exc).__name__}: {exc}"
+
+    risk_level = _risk_level(categories, validation, semantic_risk)
     required_next_steps = []
 
     if risk_level == "block":
         required_next_steps.append("fix_patch_gate_failures_before_apply")
-    if risk_level in {"high", "block"}:
+    if risk_level in {"high", "critical", "block"}:
         required_next_steps.append("human_review_required")
-    if categories:
+    if categories or (semantic_risk and semantic_risk.get("categories")):
         required_next_steps.append("explain_risk_categories_before_apply")
     if not tests:
         required_next_steps.append("tests_required_before_safe_apply")
@@ -88,10 +104,12 @@ def review_patch_text(patch_text: str, allowed_files=None, allowed_dirs=None, te
         "added_lines": validation.get("added_lines", 0),
         "file_reviews": file_reviews,
         "validation": validation,
+        "semantic_risk": semantic_risk,
+        "semantic_risk_error": semantic_error,
         "tests": tests or [],
         "writes_code": False,
         "required_next_steps": required_next_steps,
-        "claim": "Patch review classifies risk and validates safety gates. It does not prove correctness and does not apply code.",
+        "claim": "Patch review classifies textual and semantic risk from available evidence. It does not prove correctness and does not apply code.",
     }
 
 
