@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from uacos.config import uacos_dir
 from uacos.ast_engine.language_backends import available_backends, parse_repo_languages
+from uacos.graph.inheritance import build_inheritance_edges
 
 
 KNOWN_EXTENSIONS = (
@@ -180,6 +181,8 @@ def _symbol_records(parsed: list[dict]) -> tuple[list[dict], dict[str, list[str]
                 }
                 if kind == "class":
                     record["bases"] = item.get("bases", [])
+                    record["base_records"] = item.get("base_records", [])
+                    record["type_kind"] = item.get("type_kind", "class")
                 symbols.append(record)
                 for alias in {
                     symbol_id,
@@ -286,6 +289,13 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
                 "language": doc.get("language"),
             })
 
+    inheritance_edges = build_inheritance_edges(
+        parsed,
+        symbols,
+        module_to_file,
+        _resolve_import_module,
+    )
+
     language_counts: dict[str, int] = {}
     backend_counts: dict[str, int] = {}
     for doc in parsed:
@@ -307,6 +317,7 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
         "file_symbols": file_symbols,
         "file_edges": file_edges,
         "call_edges": call_edges,
+        "inheritance_edges": inheritance_edges,
         "language_backends": available_backends(),
         "stats": {
             "file_count": len(parsed),
@@ -314,6 +325,9 @@ def build_graph(repo_root: Path, include_tests: bool = True) -> dict:
             "call_edge_count": len(call_edges),
             "resolved_call_edge_count": len([e for e in call_edges if e.get("target_symbol_id")]),
             "ambiguous_call_edge_count": len([e for e in call_edges if e.get("resolution") == "ambiguous"]),
+            "inheritance_edge_count": len(inheritance_edges),
+            "resolved_inheritance_edge_count": len([e for e in inheritance_edges if e.get("target_symbol_id")]),
+            "ambiguous_inheritance_edge_count": len([e for e in inheritance_edges if str(e.get("resolution", "")).startswith("ambiguous")]),
             "symbol_count": len(symbols),
             "parse_errors": len([d for d in parsed if d.get("parse_error")]),
             "language_counts": language_counts,
