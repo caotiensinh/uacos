@@ -8,7 +8,17 @@ from uacos.patching.engine import parse_unified_diff
 
 
 def _safe_target(repo_root: Path, rel: str) -> Path:
-    candidate = (repo_root / rel).resolve(strict=False)
+    rel_path = Path(rel)
+    if not rel or rel_path.is_absolute() or ".." in rel_path.parts:
+        raise ValueError(f"unsafe_precondition_path:{rel}")
+
+    raw = repo_root / rel_path
+    # Preserve the direct symlink itself so callers can classify it explicitly
+    # instead of resolving through it and losing evidence that the path was a link.
+    if raw.is_symlink():
+        return raw
+
+    candidate = raw.resolve(strict=False)
     root = repo_root.resolve()
     try:
         candidate.relative_to(root)
@@ -26,7 +36,10 @@ def _sha256_file(path: Path) -> str:
 
 
 def _expect_existing(repo_root: Path, rel: str) -> dict[str, Any]:
-    path = _safe_target(repo_root, rel)
+    try:
+        path = _safe_target(repo_root, rel)
+    except ValueError:
+        return {"path": rel, "expect": "regular_file", "invalid": "unsafe_path"}
     if path.is_symlink():
         return {"path": rel, "expect": "regular_file", "invalid": "symlink"}
     if not path.exists():
@@ -43,17 +56,21 @@ def _expect_existing(repo_root: Path, rel: str) -> dict[str, Any]:
 
 
 def _expect_absent(repo_root: Path, rel: str) -> dict[str, Any]:
-    path = _safe_target(repo_root, rel)
-    return {"path": rel, "expect": "absent", "exists": path.exists() or path.is_symlink()}
+    try:
+        path = _safe_target(repo_root, rel)
+    except ValueError:
+        return {"path": rel, "expect": "absent", "invalid": "unsafe_path"}
+    if path.is_symlink():
+        return {"path": rel, "expect": "absent", "invalid": "symlink"}
+    return {"path": rel, "expect": "absent", "exists": path.exists()}
 
 
 def capture_patch_preconditions(repo_root: Path, patch_text: str) -> dict[str, Any]:
     """Capture filesystem assumptions that must still hold when a patch is applied.
 
-    The snapshot is intentionally content-based rather than mtime-based. Existing
-    modify/delete/rename sources are pinned by SHA-256, while new/rename targets are
-    required to remain absent. This allows a caller to detect stale patches after an
-    agent spent time reasoning against an older workspace state.
+    Existing modify/delete/rename sources are pinned by SHA-256, while new/rename
+    targets are required to remain absent. This lets callers detect a stale patch if
+    the workspace changes while an agent is reasoning or before mutation begins.
     """
     repo_root = repo_root.resolve()
     rows: dict[str, dict[str, Any]] = {}
