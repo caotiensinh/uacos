@@ -20,6 +20,7 @@ from uacos.runtime.agent_runtime import init_runtime, create_job, run_job_once, 
 from uacos.ops.packaging import bootstrap, health_check
 from uacos.product.workflows import get_product_contract
 from uacos.orchestrator.contract import build_orchestration_plan, get_orchestration_contract, next_loop_decision
+from uacos.mcp.http_limits import validate_content_length
 
 
 def utcnow() -> str:
@@ -289,7 +290,25 @@ class UacosMcpHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            length = int(self.headers.get("Content-Length", "0"))
+            try:
+                length = validate_content_length(self.headers.get("Content-Length"))
+            except ValueError as exc:
+                reason = str(exc)
+                status = 411 if reason == "content_length_required" else 413 if reason == "request_too_large" else 400
+                _json_response(
+                    self,
+                    status,
+                    {
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -32600,
+                            "message": reason,
+                            "type": "InvalidRequest",
+                        },
+                    },
+                )
+                return
+
             raw = self.rfile.read(length).decode("utf-8")
             payload = json.loads(raw or "{}")
             if self.path == "/call":
