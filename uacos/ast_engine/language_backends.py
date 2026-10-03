@@ -62,8 +62,10 @@ BACKENDS: tuple[LanguageBackend, ...] = (
         parse_repo=_parse_python,
         parser_engine="python_ast",
     ),
+    # Keep the public backend name stable. The implementation is upgraded to
+    # Tree-sitter when semantic dependencies are installed.
     LanguageBackend(
-        name="javascript_typescript_tree_sitter",
+        name="javascript_typescript",
         languages=("javascript", "typescript"),
         extensions=(".js", ".jsx", ".ts", ".tsx"),
         semantic_level="tree_sitter_ast",
