@@ -20,6 +20,9 @@ def _name(node) -> str:
     return ""
 
 
+_ROUTE_METHODS = {"get", "post", "put", "delete", "patch", "options", "head", "websocket", "route"}
+
+
 class PythonAstVisitor(ast.NodeVisitor):
     def __init__(self):
         self.functions = []
@@ -29,6 +32,7 @@ class PythonAstVisitor(ast.NodeVisitor):
         self.imports = []
         self.import_records = []
         self.calls = []
+        self.routes = []
         self.symbol_locations = []
         self.current_class = None
         self.current_function = None
@@ -86,6 +90,26 @@ class PythonAstVisitor(ast.NodeVisitor):
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
         self._visit_function(node, is_async=True)
 
+    def _capture_routes(self, node, qname: str) -> None:
+        for decorator in getattr(node, "decorator_list", []):
+            target = decorator.func if isinstance(decorator, ast.Call) else decorator
+            decorator_name = _name(target)
+            method = decorator_name.rsplit(".", 1)[-1].lower() if decorator_name else ""
+            if method not in _ROUTE_METHODS:
+                continue
+            path = None
+            if isinstance(decorator, ast.Call) and decorator.args:
+                first = decorator.args[0]
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    path = first.value
+            self.routes.append({
+                "handler": qname,
+                "method": method.upper() if method != "route" else "ROUTE",
+                "path": path,
+                "decorator": decorator_name,
+                "lineno": getattr(decorator, "lineno", getattr(node, "lineno", None)),
+            })
+
     def _visit_function(self, node, is_async: bool):
         prev_function = self.current_function
         qname = f"{self.current_class}.{node.name}" if self.current_class else node.name
@@ -105,6 +129,7 @@ class PythonAstVisitor(ast.NodeVisitor):
             self.async_functions.append(item)
         else:
             self.functions.append(item)
+        self._capture_routes(node, qname)
         self.symbol_locations.append({
             "symbol": qname,
             "kind": "function",
@@ -141,6 +166,7 @@ def parse_python_file(path: Path, repo_root: Path | None = None) -> dict:
         "imports": [],
         "import_records": [],
         "calls": [],
+        "routes": [],
         "symbol_locations": [],
         "parse_error": None,
     }
@@ -156,6 +182,7 @@ def parse_python_file(path: Path, repo_root: Path | None = None) -> dict:
             "imports": sorted(set(visitor.imports)),
             "import_records": visitor.import_records,
             "calls": visitor.calls,
+            "routes": visitor.routes,
             "symbol_locations": visitor.symbol_locations,
         })
     except SyntaxError as exc:
