@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import Any
 
 from uacos.agent.safe_execution import run_safe_agent_execution
-from uacos.execution.evidence_ledger import append_evidence_event, verify_evidence_ledger
+from uacos.execution.evidence_ledger import (
+    append_evidence_event,
+    read_evidence_ledger,
+    verify_evidence_ledger,
+)
 from uacos.runtime.failure_taxonomy import plan_recovery
 
 
@@ -46,6 +50,37 @@ def record_recovery_decision(
     failure_reason = str(result.get("reason") or "unknown_failure")
     mutation_applied = _mutation_applied(result)
     rollback_verified = _rollback_verified(result)
+    run_id = str(result.get("run_id") or "") or None
+    action_id = f"recovery:{run_id or 'unbound'}:{repair_attempts}"
+
+    existing = next(
+        (
+            row
+            for row in read_evidence_ledger(repo_root)
+            if row.get("event_type") == "recovery_decision" and row.get("action_id") == action_id
+        ),
+        None,
+    )
+    if existing is not None:
+        data = existing.get("data") or {}
+        if (
+            existing.get("run_id") != run_id
+            or existing.get("task_id") != task_id
+            or str(data.get("failure_reason") or "") != failure_reason
+        ):
+            return {
+                "action": "STOP",
+                "reason": "recovery_action_id_conflict",
+                "persisted": False,
+                "evidence_event_id": existing.get("event_id"),
+            }
+        decision = dict(data.get("decision") or {})
+        return decision | {
+            "persisted": True,
+            "idempotent_replay": True,
+            "evidence_event_id": existing.get("event_id"),
+        }
+
     decision = plan_recovery(
         failure_reason,
         real_failure_observed=_observed_failure(result),
@@ -56,7 +91,6 @@ def record_recovery_decision(
         max_repair_attempts=max_repair_attempts,
     )
 
-    run_id = str(result.get("run_id") or "") or None
     event = append_evidence_event(
         repo_root,
         event_type="recovery_decision",
@@ -64,7 +98,7 @@ def record_recovery_decision(
         status=str(decision.get("action") or "STOP").lower(),
         task_id=task_id,
         run_id=run_id,
-        action_id=f"recovery:{run_id or 'unbound'}:{repair_attempts}",
+        action_id=action_id,
         data={
             "failure_reason": failure_reason,
             "mutation_applied": mutation_applied,
@@ -75,7 +109,11 @@ def record_recovery_decision(
             "decision": decision,
         },
     )
-    return decision | {"persisted": True, "evidence_event_id": event["event_id"]}
+    return decision | {
+        "persisted": True,
+        "idempotent_replay": False,
+        "evidence_event_id": event["event_id"],
+    }
 
 
 def run_safe_execution_with_recovery(
