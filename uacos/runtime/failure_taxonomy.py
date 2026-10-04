@@ -39,7 +39,7 @@ class FailureClassification:
     raw: str
     category: str
     repairable: bool
-    requires_rollback: bool
+    mutation_related: bool
     requires_human: bool
 
     def to_dict(self) -> dict[str, Any]:
@@ -47,7 +47,7 @@ class FailureClassification:
             "raw": self.raw,
             "category": self.category,
             "repairable": self.repairable,
-            "requires_rollback": self.requires_rollback,
+            "mutation_related": self.mutation_related,
             "requires_human": self.requires_human,
         }
 
@@ -59,7 +59,7 @@ def classify_failure(failure_class: str | None) -> FailureClassification:
         raw=raw,
         category=category,
         repairable=category in AUTO_REPAIRABLE,
-        requires_rollback=category in MUTATION_RELATED,
+        mutation_related=category in MUTATION_RELATED,
         requires_human=category in HUMAN_REQUIRED,
     )
 
@@ -68,6 +68,7 @@ def plan_recovery(
     failure_class: str | None,
     *,
     real_failure_observed: bool,
+    mutation_applied: bool = False,
     rollback_verified: bool = False,
     repeated_failure: bool = False,
     repair_attempts: int = 0,
@@ -77,7 +78,8 @@ def plan_recovery(
 
     The planner is intentionally deterministic and fail-closed. It does not trust an
     agent's prose claim that a failure or rollback happened; callers must supply facts
-    derived from host-observed evidence.
+    derived from host-observed evidence. Rollback is required only when a failed path
+    actually mutated workspace state.
     """
     classification = classify_failure(failure_class)
 
@@ -111,7 +113,7 @@ def plan_recovery(
             "reason": f"non_repairable:{classification.category.lower()}",
             "classification": classification.to_dict(),
         }
-    if classification.requires_rollback and not rollback_verified:
+    if classification.mutation_related and mutation_applied and not rollback_verified:
         return {
             "action": "STOP",
             "reason": "verified_rollback_required_before_repair",
