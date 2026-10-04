@@ -49,10 +49,17 @@ def _evidence_names(row: dict[str, Any]) -> set[str]:
     return {name for name in names if name}
 
 
-def _rows_for_task(rows: list[dict[str, Any]], task_id: str | None) -> list[dict[str, Any]]:
-    if not task_id:
-        return rows
-    return [row for row in rows if row.get("task_id") == task_id]
+def _rows_for_scope(
+    rows: list[dict[str, Any]],
+    task_id: str | None,
+    run_id: str | None,
+) -> list[dict[str, Any]]:
+    scoped = rows
+    if task_id:
+        scoped = [row for row in scoped if row.get("task_id") == task_id]
+    if run_id:
+        scoped = [row for row in scoped if row.get("run_id") == run_id]
+    return scoped
 
 
 def _matching_checks(rows: list[dict[str, Any]], event_types: set[str], required: list[str]) -> tuple[set[str], set[str], list[str]]:
@@ -106,14 +113,15 @@ def verify_task_outcome(
     contract: dict[str, Any],
     *,
     task_id: str | None = None,
+    run_id: str | None = None,
     record_verdict: bool = True,
 ) -> dict[str, Any]:
     """Derive task outcome from host-recorded canonical evidence, never agent prose.
 
     Verification layers are intentionally separate so test success cannot masquerade as
     a working system or a satisfied user outcome. Runtime/outcome checks are matched by
-    exact check IDs declared in Task Contract V2. When task_id is supplied, only evidence
-    bound to that exact task may satisfy the verdict.
+    exact check IDs declared in Task Contract V2. When task_id/run_id are supplied, only
+    evidence bound to that exact execution scope may satisfy the verdict.
     """
     repo_root = repo_root.resolve()
     if contract.get("status") != "ok" or contract.get("version") != 2:
@@ -129,7 +137,7 @@ def verify_task_outcome(
             "layers": {},
         }
 
-    rows = _rows_for_task(read_evidence_ledger(repo_root), task_id)
+    rows = _rows_for_scope(read_evidence_ledger(repo_root), task_id, run_id)
     success = contract.get("success_conditions") or {}
     required_tests = list(success.get("tests") or [])
     required_runtime = list(success.get("runtime") or [])
@@ -208,6 +216,7 @@ def verify_task_outcome(
         "overall": overall,
         "contract_id": contract.get("contract_id"),
         "task_id": task_id,
+        "run_id": run_id,
         "ledger_integrity": ledger_integrity,
         "layers": layers,
         "done_predicate": done,
@@ -221,6 +230,7 @@ def verify_task_outcome(
             source="uacos.validation.outcome_verifier",
             status="pass" if overall == "PASS" else "fail",
             task_id=task_id,
+            run_id=run_id,
             evidence_refs=refs,
             parent_event_ids=refs,
             data={
