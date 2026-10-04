@@ -54,7 +54,9 @@ def run_leased_safe_agent_execution(
 
     All leases must be acquired before execution. A background heartbeat keeps them
     alive, while an opt-in mutation guard re-validates every fencing token inside
-    `run_safe_agent_execution` immediately before preconditions and `apply_patch`.
+    `run_safe_agent_execution` before preconditions, before `apply_patch`, and before
+    successful completion. Loss after apply is handled inside safe execution by
+    verified rollback before the wrapper releases leases.
     """
     root = Path(repo_root).resolve()
     owner = str(owner_id or "").strip()
@@ -195,7 +197,7 @@ def run_leased_safe_agent_execution(
         "heartbeat_failures": heartbeat_failures,
         "release_results": release_results,
     }
-    if heartbeat_failures:
+    if heartbeat_failures and execution_result.get("status") == "passed":
         execution_result["status"] = "failed"
         execution_result["reason"] = "resource_lease_lost_during_execution"
     return execution_result
