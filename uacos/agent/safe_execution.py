@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 import hashlib
 
 from uacos.agent.harness import run_agent_harness
@@ -13,6 +13,9 @@ from uacos.security.approval import verify_approval_record
 from uacos.security.evidence_gate import evaluate_mutation_evidence_gate
 from uacos.security.patch_review import review_patch_text
 from uacos.security.policy import evaluate_patch_policy, load_policy
+
+
+MutationGuard = Callable[[], dict[str, Any]]
 
 
 def _extract_diff(text: str) -> str | None:
@@ -64,6 +67,23 @@ def _rollback_after_test_failure(repo_root: Path, applied: dict, preconditions: 
     }
 
 
+def _evaluate_mutation_guard(guard: MutationGuard, stage: str) -> dict[str, Any]:
+    try:
+        decision = guard()
+    except Exception as exc:
+        return {
+            "status": "fail",
+            "reason": "mutation_guard_exception",
+            "stage": stage,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    if not isinstance(decision, dict):
+        return {"status": "fail", "reason": "mutation_guard_invalid_result", "stage": stage}
+    normalized = dict(decision)
+    normalized["stage"] = stage
+    return normalized
+
+
 def run_safe_agent_execution(
     repo_root: Path,
     task: str,
@@ -79,11 +99,15 @@ def run_safe_agent_execution(
     policy_path: Path | None = None,
     approval_record: dict | None = None,
     mutation_evidence_contract: dict[str, Any] | None = None,
+    mutation_guard: MutationGuard | None = None,
 ) -> dict:
-    """Run agent -> policy/approval -> evidence gate -> stale-check -> apply -> tests -> verified rollback.
+    """Run agent -> policy/approval -> evidence gate -> fencing -> stale-check -> apply -> tests -> rollback.
 
-    `mutation_evidence_contract` is opt-in so legacy callers preserve their behavior.
-    When enabled, source mutation is denied until canonical evidence requirements pass.
+    `mutation_evidence_contract` and `mutation_guard` are opt-in so legacy callers
+    preserve their behavior. When a mutation guard is supplied, source mutation is
+    denied unless the guard passes before precondition capture, immediately before
+    `apply_patch`, and again before a successful applied result is committed to the
+    caller. Losing the guard after apply triggers verified rollback.
     """
     repo_root = repo_root.resolve()
     allowed_files = list(allowed_files or [])
@@ -111,6 +135,7 @@ def run_safe_agent_execution(
         "policy_decision": None,
         "approval_verification": None,
         "evidence_gate": None,
+        "mutation_guard": [],
         "preconditions": None,
         "precondition_verification": None,
         "patch_apply": None,
@@ -179,6 +204,14 @@ def run_safe_agent_execution(
             result["reason"] = "mutation_evidence_gate_blocked"
             return result
 
+    if mutation_guard is not None:
+        guard = _evaluate_mutation_guard(mutation_guard, "before_preconditions")
+        result["mutation_guard"].append(guard)
+        if guard.get("status") != "pass":
+            result["status"] = "blocked"
+            result["reason"] = "mutation_guard_blocked"
+            return result
+
     preconditions = capture_patch_preconditions(repo_root, patch_text)
     result["preconditions"] = preconditions
     if preconditions.get("status") != "pass":
@@ -192,6 +225,14 @@ def run_safe_agent_execution(
         result["status"] = "failed"
         result["reason"] = "stale_patch_precondition_failed"
         return result
+
+    if mutation_guard is not None:
+        guard = _evaluate_mutation_guard(mutation_guard, "before_apply")
+        result["mutation_guard"].append(guard)
+        if guard.get("status") != "pass":
+            result["status"] = "blocked"
+            result["reason"] = "mutation_guard_blocked"
+            return result
 
     patch_path = _patch_file(repo_root, harness["run_id"], patch_text)
     applied = apply_patch(
@@ -212,6 +253,22 @@ def run_safe_agent_execution(
     test_report = _run_policy_tests(repo_root, tests, timeout_seconds)
     result["tests"] = test_report
     if test_report["status"] == "pass":
+        if mutation_guard is not None:
+            guard = _evaluate_mutation_guard(mutation_guard, "before_success")
+            result["mutation_guard"].append(guard)
+            if guard.get("status") != "pass":
+                rollback = _rollback_after_test_failure(repo_root, applied, preconditions)
+                result["rollback"] = rollback
+                if rollback["status"] == "rolled_back":
+                    result["status"] = "blocked"
+                    result["reason"] = "mutation_guard_lost_after_apply"
+                elif rollback.get("engine_result", {}).get("status") == "ok" and rollback.get("verification", {}).get("status") != "pass":
+                    result["status"] = "failed"
+                    result["reason"] = "rollback_verification_failed"
+                else:
+                    result["status"] = "failed"
+                    result["reason"] = "rollback_failed"
+                return result
         result["status"] = "passed"
         result["reason"] = "patch_applied_tests_passed"
         return result
