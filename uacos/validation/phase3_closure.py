@@ -118,14 +118,33 @@ def _jev_ab_pass(report: dict[str, Any] | None) -> bool:
     modes = report.get("modes")
     if not isinstance(modes, list) or set(str(mode) for mode in modes) != {"jev_off", "jev_on"}:
         return False
+    thresholds = report.get("thresholds")
+    if not isinstance(thresholds, dict):
+        return False
+    try:
+        min_repeats = int(thresholds.get("min_repeats", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    if min_repeats < 3:
+        return False
     summaries = report.get("summaries")
     if not isinstance(summaries, dict) or not {"jev_off", "jev_on"}.issubset(summaries):
         return False
+    for mode in ("jev_off", "jev_on"):
+        summary = summaries.get(mode)
+        if not isinstance(summary, dict):
+            return False
+        try:
+            runs = int(summary.get("runs", 0) or 0)
+        except (TypeError, ValueError):
+            return False
+        if runs < min_repeats:
+            return False
     checks = report.get("checks")
     if not isinstance(checks, dict) or not checks or not all(value is True for value in checks.values()):
         return False
     observations = report.get("observations")
-    return isinstance(observations, list) and bool(observations)
+    return isinstance(observations, list) and len(observations) >= (2 * min_repeats)
 
 
 def _evidence_summary_pass(report: dict[str, Any] | None) -> tuple[bool, list[str]]:
@@ -181,5 +200,5 @@ def evaluate_phase3_closure(
         "blockers": blockers,
         "required_evidence_flags": list(REQUIRED_EVIDENCE_FLAGS),
         "paths": asdict(paths),
-        "claim": "Phase 3 closes only when real-agent execution, real comparative evidence, canonically verified attestation, evidence-ledger reliability economics, sustained soak, Jev OFF/ON comparison, and all required safety evidence flags are present and passing.",
+        "claim": "Phase 3 closes only when real-agent execution, real comparative evidence, canonically verified attestation, evidence-ledger reliability economics, sustained soak, repeated Jev OFF/ON comparison, and all required safety evidence flags are present and passing.",
     }
