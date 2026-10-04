@@ -1,0 +1,154 @@
+name: Jev real OFF ON E2E
+
+on:
+  pull_request:
+    paths:
+      - "uacos/benchmarks/jev_ab.py"
+      - "uacos/judgment/jev.py"
+      - "uacos/judgment/typesafe_http.py"
+      - "scripts/run_real_jev_ab_e2e.py"
+      - "tests/test_phase3_jev_ab_evaluator.py"
+      - ".github/workflows/jev-real-ab-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[test]
+      - name: Compile Jev benchmark entrypoints
+        run: python -m py_compile uacos/benchmarks/jev_ab.py scripts/run_real_jev_ab_e2e.py
+      - name: Jev evaluator contract tests
+        run: python -m pytest -q tests/test_phase3_jev_ab_evaluator.py tests/test_phase3_jev_judgment_adapter.py tests/test_phase3_typesafe_jev_http.py
+
+  live-jev-ab:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: contract
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 90
+    env:
+      UACOS_JEV_BENCHMARK_PROVIDER: codex
+      UACOS_SECRET_JEV_BENCHMARK_MODEL: ${{ vars.UACOS_JEV_BENCHMARK_MODEL }}
+      UACOS_SECRET_TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+      UACOS_SECRET_CODEX_ARGV_JSON: ${{ secrets.UACOS_CODEX_ARGV_JSON }}
+      UACOS_SECRET_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      UACOS_SECRET_CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[test]
+      - name: Hydrate nonempty GitHub configuration without masking runner environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          copy_if_set() {
+            local source_name="$1"
+            local target_name="$2"
+            local value="${!source_name:-}"
+            if [[ -n "$value" ]]; then
+              printf '%s=%s\n' "$target_name" "$value" >> "$GITHUB_ENV"
+            fi
+          }
+          copy_if_set UACOS_SECRET_JEV_BENCHMARK_MODEL UACOS_JEV_BENCHMARK_MODEL
+          copy_if_set UACOS_SECRET_TYPESAFE_API_KEY UACOS_TYPESAFE_API_KEY
+          copy_if_set UACOS_SECRET_CODEX_ARGV_JSON UACOS_CODEX_ARGV_JSON
+          copy_if_set UACOS_SECRET_OPENAI_API_KEY OPENAI_API_KEY
+          copy_if_set UACOS_SECRET_CODEX_API_KEY CODEX_API_KEY
+      - name: TypeSafe credential preflight without secret disclosure
+        id: typesafe_preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/jev-real-ab
+          if [[ -z "${UACOS_TYPESAFE_API_KEY:-}" && -z "${TYPESAFE_API_KEY:-}" ]]; then
+            printf '{"status":"blocked","blocker":"typesafe_api_key_missing","benchmark_required":false}\n' > reports/jev-real-ab/preflight.json
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Jev commercial benchmark BLOCKED: typesafe_api_key_missing"
+            exit 0
+          fi
+          printf '{"status":"pass","typesafe_credential_present":true,"benchmark_required":false}\n' > reports/jev-real-ab/preflight.json
+          echo "available=true" >> "$GITHUB_OUTPUT"
+      - name: Bootstrap Codex CLI if runner does not provide it
+        if: steps.typesafe_preflight.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v codex >/dev/null 2>&1; then
+            codex --version
+            exit 0
+          fi
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "codex_binary_missing_and_npm_unavailable"
+            exit 2
+          fi
+          prefix="$RUNNER_TEMP/uacos-codex"
+          npm install --prefix "$prefix" @openai/codex
+          echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
+          "$prefix/node_modules/.bin/codex" --version
+      - name: Resolve exact Codex model and safe argv
+        if: steps.typesafe_preflight.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${UACOS_JEV_BENCHMARK_MODEL:-}" && -f "$HOME/.codex/config.toml" ]]; then
+            model="$(python - <<'PY'
+          import pathlib, tomllib
+          path = pathlib.Path.home() / '.codex' / 'config.toml'
+          try:
+              data = tomllib.loads(path.read_text(encoding='utf-8'))
+          except Exception:
+              data = {}
+          value = data.get('model')
+          print(value if isinstance(value, str) else '')
+          PY
+            )"
+            if [[ -n "$model" ]]; then
+              printf 'UACOS_JEV_BENCHMARK_MODEL=%s\n' "$model" >> "$GITHUB_ENV"
+            fi
+          fi
+          if [[ -z "${UACOS_CODEX_ARGV_JSON:-}" ]]; then
+            if [[ -z "${UACOS_JEV_BENCHMARK_MODEL:-}" ]]; then
+              echo "exact_codex_model_unavailable"
+              exit 2
+            fi
+            argv_json="$(python - "$UACOS_JEV_BENCHMARK_MODEL" <<'PY'
+          import json, sys
+          model = sys.argv[1]
+          print(json.dumps([
+              'codex', '--ask-for-approval', 'never', '--sandbox', 'read-only',
+              'exec', '--skip-git-repo-check', '--model', model, '-'
+          ]))
+          PY
+            )"
+            printf 'UACOS_CODEX_ARGV_JSON=%s\n' "$argv_json" >> "$GITHUB_ENV"
+          fi
+      - name: Provider readiness evidence
+        if: steps.typesafe_preflight.outputs.available == 'true'
+        run: python scripts/provider_readiness.py --output reports/jev-real-ab/provider_readiness.json
+      - name: Real Jev OFF ON repeated E2E
+        if: steps.typesafe_preflight.outputs.available == 'true'
+        run: python scripts/run_real_jev_ab_e2e.py --provider "$UACOS_JEV_BENCHMARK_PROVIDER" --repeats 3 --output-dir reports/jev-real-ab --require-pass
+      - name: Upload Jev A/B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jev-real-ab-${{ github.run_id }}
+          path: reports/jev-real-ab/
+          if-no-files-found: warn
+          retention-days: 90
