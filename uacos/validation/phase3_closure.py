@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 import json
 
+from uacos.execution.evidence_ledger import read_evidence_ledger, verify_evidence_ledger
+
 
 @dataclass(frozen=True)
 class Phase3ClosurePaths:
@@ -30,6 +32,14 @@ REQUIRED_EVIDENCE_FLAGS = (
     "unsupported_claims_zero",
     "false_completions_zero",
     "wrong_changes_zero",
+)
+
+CANONICAL_REF_FLAGS = (
+    "claim_firewall_enforced",
+    "mutation_gate_enforced",
+    "outcome_verification_passed",
+    "intentional_failure_rollback_verified",
+    "lease_conflict_blocked",
 )
 
 
@@ -162,11 +172,77 @@ def _jev_ab_pass(report: dict[str, Any] | None) -> bool:
     return isinstance(observations, list) and len(observations) >= (2 * min_repeats)
 
 
-def _evidence_summary_pass(report: dict[str, Any] | None) -> tuple[bool, list[str]]:
+def _refs(report: dict[str, Any], flag: str) -> list[str]:
+    evidence_refs = report.get("evidence_refs")
+    if not isinstance(evidence_refs, dict):
+        return []
+    values = evidence_refs.get(flag)
+    if not isinstance(values, list):
+        return []
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
+def _canonical_ref_matches(flag: str, row: dict[str, Any]) -> bool:
+    event_type = str(row.get("event_type") or "")
+    status = str(row.get("status") or "").lower()
+    data = row.get("data") if isinstance(row.get("data"), dict) else {}
+    if flag == "claim_firewall_enforced":
+        return event_type == "claim_decision"
+    if flag == "mutation_gate_enforced":
+        return event_type == "mutation_gate" and status == "pass" and str(data.get("decision") or "") == "allow"
+    if flag == "outcome_verification_passed":
+        return event_type == "outcome_verdict" and status == "pass" and str(data.get("overall") or "") == "PASS"
+    if flag == "intentional_failure_rollback_verified":
+        return (
+            event_type == "recovery_decision"
+            and bool(data.get("real_failure_observed"))
+            and bool(data.get("mutation_applied"))
+            and bool(data.get("rollback_verified"))
+        )
+    if flag == "lease_conflict_blocked":
+        return event_type == "resource_lease" and status == "blocked" and str(data.get("reason") or "") == "resource_lease_conflict"
+    return False
+
+
+def _evidence_summary_pass(
+    root: Path,
+    report: dict[str, Any] | None,
+) -> tuple[bool, list[str], list[str]]:
     if not report:
-        return False, list(REQUIRED_EVIDENCE_FLAGS)
+        return False, list(REQUIRED_EVIDENCE_FLAGS), ["evidence_summary_missing"]
+
     missing = [flag for flag in REQUIRED_EVIDENCE_FLAGS if report.get(flag) is not True]
-    return not missing, missing
+    provenance_findings: list[str] = []
+    ledger = verify_evidence_ledger(root)
+    if ledger.get("status") != "pass":
+        provenance_findings.append("canonical_ledger_invalid")
+        return False, missing, provenance_findings
+
+    rows = read_evidence_ledger(root)
+    by_id = {str(row.get("event_id")): row for row in rows if row.get("event_id")}
+
+    for flag in CANONICAL_REF_FLAGS:
+        refs = _refs(report, flag)
+        if not refs:
+            provenance_findings.append(f"canonical_evidence_refs_missing:{flag}")
+            continue
+        referenced = [by_id[event_id] for event_id in refs if event_id in by_id]
+        if len(referenced) != len(refs):
+            provenance_findings.append(f"canonical_evidence_ref_not_found:{flag}")
+            continue
+        if not any(_canonical_ref_matches(flag, row) for row in referenced):
+            provenance_findings.append(f"canonical_evidence_ref_mismatch:{flag}")
+
+    claim_rows = [row for row in rows if str(row.get("event_type") or "") == "claim_decision"]
+    if not claim_rows:
+        provenance_findings.append("claim_decision_evidence_missing")
+    elif any(str(row.get("status") or "").upper() in {"UNSUPPORTED", "CONTRADICTED", "PARTIAL"} for row in claim_rows):
+        provenance_findings.append("unsupported_claim_decision_present")
+
+    if report.get("canonical_evidence_ledger_valid") is True and ledger.get("status") != "pass":
+        provenance_findings.append("ledger_valid_flag_contradicted")
+
+    return not missing and not provenance_findings, missing, sorted(set(provenance_findings))
 
 
 def evaluate_phase3_closure(
@@ -176,9 +252,10 @@ def evaluate_phase3_closure(
 ) -> dict[str, Any]:
     """Strict Phase-3 closure evaluator.
 
-    The evaluator never fabricates evidence and never executes workloads. It only
-    validates already-produced deterministic/real-run reports. Missing or malformed
-    mandatory evidence is a hard closure failure.
+    The evaluator never fabricates evidence and never executes workloads. It validates
+    already-produced reports and cross-checks safety claims that have canonical event
+    producers against the verified Evidence Ledger. Missing, malformed, unreferenced,
+    or contradictory mandatory evidence is a hard closure failure.
     """
     root = Path(repo_root).resolve()
     paths = paths or Phase3ClosurePaths()
@@ -191,7 +268,7 @@ def evaluate_phase3_closure(
         if error is not None:
             load_errors[name] = error
 
-    evidence_ok, missing_flags = _evidence_summary_pass(reports["evidence_summary"])
+    evidence_ok, missing_flags, provenance_findings = _evidence_summary_pass(root, reports["evidence_summary"])
     checks = {
         "real_agent_e2e": _real_agent_pass(reports["real_agent"]),
         "real_comparative_benchmark": _comparative_pass(reports["comparative"]),
@@ -204,6 +281,7 @@ def evaluate_phase3_closure(
 
     blockers = [f"missing_or_invalid_report:{name}:{reason}" for name, reason in sorted(load_errors.items())]
     blockers.extend(f"required_evidence_flag_not_true:{flag}" for flag in missing_flags)
+    blockers.extend(f"evidence_provenance_failed:{finding}" for finding in provenance_findings)
     blockers.extend(f"closure_check_failed:{name}" for name, ok in checks.items() if not ok)
     blockers = sorted(set(blockers))
 
@@ -214,6 +292,7 @@ def evaluate_phase3_closure(
         "checks": checks,
         "blockers": blockers,
         "required_evidence_flags": list(REQUIRED_EVIDENCE_FLAGS),
+        "canonical_ref_flags": list(CANONICAL_REF_FLAGS),
         "paths": asdict(paths),
-        "claim": "Phase 3 closes only when real-agent execution, real comparative evidence, canonically verified attestation, evidence-ledger reliability economics, measured sustained soak, repeated Jev OFF/ON comparison, and all required safety evidence flags are present and passing.",
+        "claim": "Phase 3 closes only when real-agent execution, real comparative evidence, canonically verified attestation, evidence-ledger reliability economics, measured sustained soak, repeated Jev OFF/ON comparison, and all required safety evidence flags are present, provenance-bound where canonical producers exist, and passing.",
     }
