@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from uacos.agent import safe_execution as safe_module
-from uacos.execution.evidence_ledger import read_evidence_ledger, verify_evidence_ledger
+from uacos.execution.evidence_ledger import (
+    append_evidence_event,
+    evidence_ledger_path,
+    read_evidence_ledger,
+    verify_evidence_ledger,
+)
 from uacos.runtime.leased_safe_execution import _resource_scope, run_leased_safe_agent_execution
 from uacos.runtime.resource_lease import SQLiteResourceLeaseStore
 
@@ -176,3 +181,41 @@ def test_wrapper_passes_fencing_guard_releases_lease_and_records_success(tmp_pat
     assert event["data"]["reason"] == "resource_lease_enforcement_passed"
     assert event["data"]["owner_id"] == "agent-a"
     assert event["data"]["scope"] == [["dir", "src"]]
+
+
+def test_tampered_ledger_blocks_before_lease_acquire_or_safe_execution(tmp_path: Path):
+    append_evidence_event(
+        tmp_path,
+        event_type="seed",
+        source="test",
+        status="pass",
+    )
+    ledger_path = evidence_ledger_path(tmp_path)
+    original = ledger_path.read_text(encoding="utf-8")
+    ledger_path.write_text(original.replace('"status":"pass"', '"status":"fail"', 1), encoding="utf-8")
+    assert verify_evidence_ledger(tmp_path)["status"] == "fail"
+
+    store = SQLiteResourceLeaseStore(tmp_path)
+    called = {"safe": 0}
+
+    def fake_safe(*args, **kwargs):
+        called["safe"] += 1
+        return {"status": "passed", "reason": "should_not_run"}
+
+    result = run_leased_safe_agent_execution(
+        tmp_path,
+        "task",
+        object(),
+        owner_id="agent-a",
+        lease_store=store,
+        safe_execution_fn=fake_safe,
+        allowed_dirs=["src"],
+    )
+
+    assert result["status"] == "blocked"
+    assert result["reason"] == "evidence_ledger_invalid"
+    assert result["lease_report"]["lease_event_id"] is None
+    assert result["lease_report"]["ledger"]["status"] == "fail"
+    assert called["safe"] == 0
+    assert store.list_active() == []
+    assert ledger_path.read_text(encoding="utf-8") == original.replace('"status":"pass"', '"status":"fail"', 1)
