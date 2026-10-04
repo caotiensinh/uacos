@@ -39,14 +39,11 @@ jobs:
     timeout-minutes: 90
     env:
       UACOS_JEV_BENCHMARK_PROVIDER: codex
-      UACOS_JEV_BENCHMARK_MODEL: ${{ vars.UACOS_JEV_BENCHMARK_MODEL }}
-      UACOS_TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
-      UACOS_CODEX_ARGV_JSON: ${{ secrets.UACOS_CODEX_ARGV_JSON }}
-      UACOS_CLAUDE_CODE_ARGV_JSON: ${{ secrets.UACOS_CLAUDE_CODE_ARGV_JSON }}
-      UACOS_GOOSE_ARGV_JSON: ${{ secrets.UACOS_GOOSE_ARGV_JSON }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      UACOS_SECRET_JEV_BENCHMARK_MODEL: ${{ vars.UACOS_JEV_BENCHMARK_MODEL }}
+      UACOS_SECRET_TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+      UACOS_SECRET_CODEX_ARGV_JSON: ${{ secrets.UACOS_CODEX_ARGV_JSON }}
+      UACOS_SECRET_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      UACOS_SECRET_CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -56,16 +53,89 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .[test]
-      - name: Provider readiness evidence
-        run: python scripts/provider_readiness.py --output reports/jev-real-ab/provider_readiness.json --require-ready
-      - name: Credential preflight without secret disclosure
+      - name: Hydrate nonempty GitHub configuration without masking runner environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          copy_if_set() {
+            local source_name="$1"
+            local target_name="$2"
+            local value="${!source_name:-}"
+            if [[ -n "$value" ]]; then
+              printf '%s=%s\n' "$target_name" "$value" >> "$GITHUB_ENV"
+            fi
+          }
+          copy_if_set UACOS_SECRET_JEV_BENCHMARK_MODEL UACOS_JEV_BENCHMARK_MODEL
+          copy_if_set UACOS_SECRET_TYPESAFE_API_KEY UACOS_TYPESAFE_API_KEY
+          copy_if_set UACOS_SECRET_CODEX_ARGV_JSON UACOS_CODEX_ARGV_JSON
+          copy_if_set UACOS_SECRET_OPENAI_API_KEY OPENAI_API_KEY
+          copy_if_set UACOS_SECRET_CODEX_API_KEY CODEX_API_KEY
+      - name: TypeSafe credential preflight without secret disclosure
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "${UACOS_TYPESAFE_API_KEY:-}" && -z "${TYPESAFE_API_KEY:-}" ]]; then
+            mkdir -p reports/jev-real-ab
+            printf '{"status":"blocked","blocker":"typesafe_api_key_missing"}\n' > reports/jev-real-ab/preflight.json
             echo "typesafe_api_key_missing"
             exit 2
           fi
+          mkdir -p reports/jev-real-ab
+          printf '{"status":"pass","typesafe_credential_present":true}\n' > reports/jev-real-ab/preflight.json
+      - name: Bootstrap Codex CLI if runner does not provide it
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v codex >/dev/null 2>&1; then
+            codex --version
+            exit 0
+          fi
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "codex_binary_missing_and_npm_unavailable"
+            exit 2
+          fi
+          prefix="$RUNNER_TEMP/uacos-codex"
+          npm install --prefix "$prefix" @openai/codex
+          echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
+          "$prefix/node_modules/.bin/codex" --version
+      - name: Resolve exact Codex model and safe argv
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${UACOS_JEV_BENCHMARK_MODEL:-}" && -f "$HOME/.codex/config.toml" ]]; then
+            model="$(python - <<'PY'
+          import pathlib, tomllib
+          path = pathlib.Path.home() / '.codex' / 'config.toml'
+          try:
+              data = tomllib.loads(path.read_text(encoding='utf-8'))
+          except Exception:
+              data = {}
+          value = data.get('model')
+          print(value if isinstance(value, str) else '')
+          PY
+            )"
+            if [[ -n "$model" ]]; then
+              printf 'UACOS_JEV_BENCHMARK_MODEL=%s\n' "$model" >> "$GITHUB_ENV"
+            fi
+          fi
+          if [[ -z "${UACOS_CODEX_ARGV_JSON:-}" ]]; then
+            if [[ -z "${UACOS_JEV_BENCHMARK_MODEL:-}" ]]; then
+              echo "exact_codex_model_unavailable"
+              exit 2
+            fi
+            argv_json="$(python - "$UACOS_JEV_BENCHMARK_MODEL" <<'PY'
+          import json, sys
+          model = sys.argv[1]
+          print(json.dumps([
+              'codex', '--ask-for-approval', 'never', '--sandbox', 'read-only',
+              'exec', '--skip-git-repo-check', '--model', model, '-'
+          ]))
+          PY
+            )"
+            printf 'UACOS_CODEX_ARGV_JSON=%s\n' "$argv_json" >> "$GITHUB_ENV"
+          fi
+      - name: Provider readiness evidence
+        run: python scripts/provider_readiness.py --output reports/jev-real-ab/provider_readiness.json
       - name: Real Jev OFF ON repeated E2E
         run: python scripts/run_real_jev_ab_e2e.py --provider "$UACOS_JEV_BENCHMARK_PROVIDER" --repeats 3 --output-dir reports/jev-real-ab --require-pass
       - name: Upload Jev A/B evidence
