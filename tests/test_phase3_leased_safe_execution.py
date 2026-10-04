@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from uacos.agent import safe_execution as safe_module
+from uacos.execution.evidence_ledger import read_evidence_ledger, verify_evidence_ledger
 from uacos.runtime.leased_safe_execution import _resource_scope, run_leased_safe_agent_execution
 from uacos.runtime.resource_lease import SQLiteResourceLeaseStore
 
@@ -97,7 +98,7 @@ def test_scope_collapses_files_and_nested_dirs_under_parent_directory():
     assert scope == [("dir", "src"), ("file", "README.md")]
 
 
-def test_conflict_blocks_before_safe_execution(tmp_path: Path):
+def test_conflict_blocks_before_safe_execution_and_records_canonical_event(tmp_path: Path):
     store = SQLiteResourceLeaseStore(tmp_path)
     store.acquire(resource_type="dir", resource_key="src", owner_id="other", ttl_seconds=30)
     called = {"safe": 0}
@@ -119,9 +120,21 @@ def test_conflict_blocks_before_safe_execution(tmp_path: Path):
     assert result["status"] == "blocked"
     assert result["reason"] == "resource_lease_conflict"
     assert called["safe"] == 0
+    assert verify_evidence_ledger(tmp_path)["status"] == "pass"
+    rows = read_evidence_ledger(tmp_path)
+    assert len(rows) == 1
+    event = rows[0]
+    assert event["event_id"] == result["lease_report"]["lease_event_id"]
+    assert event["event_type"] == "resource_lease"
+    assert event["source"] == "uacos.runtime.leased_safe_execution"
+    assert event["status"] == "blocked"
+    assert event["data"]["reason"] == "resource_lease_conflict"
+    assert event["data"]["owner_id"] == "agent-a"
+    assert event["data"]["resource_type"] == "dir"
+    assert event["data"]["resource_key"] == "src"
 
 
-def test_wrapper_passes_fencing_guard_and_releases_lease(tmp_path: Path):
+def test_wrapper_passes_fencing_guard_releases_lease_and_records_success(tmp_path: Path):
     store = SQLiteResourceLeaseStore(tmp_path)
     seen = {"guards": 0}
 
@@ -132,7 +145,7 @@ def test_wrapper_passes_fencing_guard_and_releases_lease(tmp_path: Path):
         seen["guards"] = 2
         assert first["status"] == "pass"
         assert second["status"] == "pass"
-        return {"status": "passed", "reason": "ok"}
+        return {"status": "passed", "reason": "ok", "run_id": "RUN-LEASE-1"}
 
     result = run_leased_safe_agent_execution(
         tmp_path,
@@ -152,3 +165,14 @@ def test_wrapper_passes_fencing_guard_and_releases_lease(tmp_path: Path):
     assert result["lease_report"]["scope"] == [("dir", "src")]
     assert seen["guards"] == 2
     assert store.list_active() == []
+    assert verify_evidence_ledger(tmp_path)["status"] == "pass"
+    rows = read_evidence_ledger(tmp_path)
+    assert len(rows) == 1
+    event = rows[0]
+    assert event["event_id"] == result["lease_report"]["lease_event_id"]
+    assert event["event_type"] == "resource_lease"
+    assert event["status"] == "pass"
+    assert event["run_id"] == "RUN-LEASE-1"
+    assert event["data"]["reason"] == "resource_lease_enforcement_passed"
+    assert event["data"]["owner_id"] == "agent-a"
+    assert event["data"]["scope"] == [["dir", "src"]]
