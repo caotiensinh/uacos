@@ -14,54 +14,56 @@ def test_failure_taxonomy_maps_existing_runtime_classes():
 
 
 def test_repair_requires_real_observed_failure():
-    result = plan_recovery(
-        "tests_failed",
-        real_failure_observed=False,
-        rollback_verified=True,
-    )
+    result = plan_recovery("tests_failed", real_failure_observed=False, rollback_verified=True)
     assert result["action"] == "STOP"
     assert result["reason"] == "repair_requires_observed_failure"
 
 
-def test_mutation_related_failure_requires_verified_rollback():
+def test_validate_only_patch_failure_does_not_require_fake_rollback():
     result = plan_recovery(
         "patch_validation_failed",
         real_failure_observed=True,
+        mutation_applied=False,
+        rollback_verified=False,
+    )
+    assert result["action"] == "REPAIR"
+    assert result["strategy"] == "REPLAN_PATCH"
+
+
+def test_mutated_failure_requires_verified_rollback_before_repair():
+    result = plan_recovery(
+        "tests_failed",
+        real_failure_observed=True,
+        mutation_applied=True,
         rollback_verified=False,
     )
     assert result["action"] == "STOP"
     assert result["reason"] == "verified_rollback_required_before_repair"
 
 
-def test_verified_patch_failure_gets_one_bounded_repair():
+def test_verified_mutated_failure_gets_one_bounded_repair():
     result = plan_recovery(
-        "patch_validation_failed",
+        "tests_failed",
         real_failure_observed=True,
+        mutation_applied=True,
         rollback_verified=True,
         repair_attempts=0,
         max_repair_attempts=1,
     )
     assert result["action"] == "REPAIR"
-    assert result["strategy"] == "REPLAN_PATCH"
+    assert result["strategy"] == "REPLAN_FROM_TEST_EVIDENCE"
     assert result["remaining_repairs"] == 0
 
 
 def test_same_failure_signature_stops_instead_of_looping():
-    result = plan_recovery(
-        "adapter_timeout",
-        real_failure_observed=True,
-        repeated_failure=True,
-    )
+    result = plan_recovery("adapter_timeout", real_failure_observed=True, repeated_failure=True)
     assert result["action"] == "STOP"
     assert result["reason"] == "repeated_failure_signature"
 
 
 def test_repair_budget_is_hard_bounded():
     result = plan_recovery(
-        "dependency_missing",
-        real_failure_observed=True,
-        repair_attempts=1,
-        max_repair_attempts=1,
+        "dependency_missing", real_failure_observed=True, repair_attempts=1, max_repair_attempts=1
     )
     assert result["action"] == "STOP"
     assert result["reason"] == "repair_budget_exhausted"
