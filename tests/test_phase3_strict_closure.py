@@ -56,8 +56,12 @@ def _seed_valid(root: Path) -> None:
         root / "reports/soak.json",
         {
             "status": "pass",
+            "method": "repeated_observation_sustained_reliability_v1",
             "summary": {
                 "iterations": 10,
+                "verified_success_rate": 1.0,
+                "token_drift_ratio": 0.05,
+                "latency_drift_ratio": 0.08,
                 "critical_defects": {
                     "false_completion": 0,
                     "unsupported_claim": 0,
@@ -68,6 +72,13 @@ def _seed_valid(root: Path) -> None:
                     "corrupted_evidence": 0,
                     "lease_conflict_unblocked": 0,
                 },
+            },
+            "checks": {
+                "minimum_iterations": True,
+                "verified_success_rate": True,
+                "zero_critical_defects": True,
+                "token_drift_bounded": True,
+                "latency_drift_bounded": True,
             },
         },
     )
@@ -178,6 +189,17 @@ def test_any_soak_critical_defect_fails(tmp_path: Path):
     _write(tmp_path / "reports/soak.json", soak)
     result = evaluate_phase3_closure(tmp_path, paths=_paths())
     assert result["status"] == "fail"
+
+
+def test_soak_requires_measured_token_and_latency_drift(tmp_path: Path):
+    _seed_valid(tmp_path)
+    soak = json.loads((tmp_path / "reports/soak.json").read_text())
+    soak["summary"]["token_drift_ratio"] = None
+    soak["summary"]["latency_drift_ratio"] = None
+    _write(tmp_path / "reports/soak.json", soak)
+    result = evaluate_phase3_closure(tmp_path, paths=_paths())
+    assert result["status"] == "fail"
+    assert "closure_check_failed:sustained_reliability_soak" in result["blockers"]
 
 
 def test_jev_ab_requires_canonical_modes(tmp_path: Path):
