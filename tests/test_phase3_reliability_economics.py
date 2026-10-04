@@ -59,16 +59,19 @@ def test_latest_outcome_verdict_per_run_is_authoritative(tmp_path: Path):
     assert metrics["verified_failures"] == 0
 
 
-def test_retry_token_ratio_is_measured_only_from_explicit_retry_markers(tmp_path: Path):
+def test_ad_hoc_retry_metadata_does_not_fabricate_retry_token_economics(tmp_path: Path):
     _verdict(tmp_path, "R1", "pass")
     _tokens(tmp_path, "R1", 80)
-    _tokens(tmp_path, "R1", 20, retry=True)
+    _tokens(tmp_path, "R1", 20, retry=True, repair_attempt=1)
 
-    metrics = collect_reliability_economics(tmp_path)["metrics"]
+    result = collect_reliability_economics(tmp_path)
+    metrics = result["metrics"]
 
     assert metrics["total_settled_tokens"] == 100
-    assert metrics["retry_tokens"] == 20
-    assert metrics["retry_token_ratio"] == 0.2
+    assert metrics["retry_tokens"] is None
+    assert metrics["retry_token_ratio"] is None
+    assert "retry_tokens" in result["unavailable_metrics"]
+    assert "retry_token_ratio" in result["unavailable_metrics"]
 
 
 def test_recovery_and_rollback_metrics_use_recovery_decision_evidence(tmp_path: Path):
@@ -120,6 +123,8 @@ def test_missing_denominators_are_none_not_optimistic_zero(tmp_path: Path):
     assert metrics["verified_success_rate"] is None
     assert metrics["tokens_per_verified_success"] is None
     assert metrics["rollback_success_rate"] is None
+    assert metrics["retry_tokens"] is None
+    assert metrics["retry_token_ratio"] is None
     assert "false_completion_rate" in result["unavailable_metrics"]
     assert "unsupported_claim_rate" in result["unavailable_metrics"]
 
