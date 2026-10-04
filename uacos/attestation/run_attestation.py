@@ -64,7 +64,7 @@ def _find_verdict_event(
             return None
         if row.get("run_id") != run_id:
             return None
-        if task_id is not None and row.get("task_id") != task_id:
+        if row.get("task_id") != task_id:
             return None
         if str(row.get("status") or "").strip().lower() != final_status:
             return None
@@ -87,8 +87,9 @@ def create_run_attestation(
     """Create a canonical evidence-bound attestation for one run.
 
     The supplied final status is accepted only when a canonical ``outcome_verdict``
-    event with the same run/task/status already exists. This function never derives
-    PASS from prose or from an arbitrary caller-supplied string.
+    event with the same run/task/status already exists. Signature intent is included
+    in the canonical payload, preventing a signed attestation from being downgraded
+    to an apparently unsigned one by stripping signature fields.
     """
     run_id = _nonempty(run_id, "run_id_required")
     workspace_sha = _nonempty(workspace_sha, "workspace_sha_required")
@@ -97,6 +98,10 @@ def create_run_attestation(
     rollback_state = _normalized_rollback(rollback_state)
     task_id = str(task_id or "").strip() or None
     contract_hash = hash_contract(contract)
+
+    if signing_key is not None and (not isinstance(signing_key, (bytes, bytearray)) or not signing_key):
+        raise ValueError("signing_key_must_be_nonempty_bytes")
+    signature_algorithm = "hmac-sha256" if signing_key is not None else None
 
     integrity = verify_evidence_ledger(repo_root)
     if integrity.get("status") != "pass":
@@ -132,6 +137,7 @@ def create_run_attestation(
         "evidence_records": int(integrity.get("records", 0)),
         "final_status": final_status,
         "rollback_state": rollback_state,
+        "signature_algorithm": signature_algorithm,
     }
     attestation_hash = _sha256(_canonical(payload))
     result: dict[str, Any] = {
@@ -140,13 +146,10 @@ def create_run_attestation(
         "attestation": {
             **payload,
             "attestation_hash": attestation_hash,
-            "signature_algorithm": "hmac-sha256" if signing_key is not None else None,
             "signature": None,
         },
     }
     if signing_key is not None:
-        if not isinstance(signing_key, (bytes, bytearray)) or not signing_key:
-            raise ValueError("signing_key_must_be_nonempty_bytes")
         result["attestation"]["signature"] = hmac.new(
             bytes(signing_key), attestation_hash.encode("ascii"), hashlib.sha256
         ).hexdigest()
@@ -182,6 +185,7 @@ def verify_run_attestation(
             "evidence_records",
             "final_status",
             "rollback_state",
+            "signature_algorithm",
         )
     }
     try:
@@ -192,6 +196,8 @@ def verify_run_attestation(
         _normalized_rollback(str(unsigned["rollback_state"] or ""))
         if int(unsigned["evidence_records"]) < 0:
             raise ValueError("evidence_records_must_be_nonnegative")
+        if unsigned["signature_algorithm"] not in {None, "hmac-sha256"}:
+            raise ValueError("unsupported_signature_algorithm")
     except (TypeError, ValueError) as exc:
         return {"status": "fail", "reason": str(exc)}
 
@@ -217,7 +223,7 @@ def verify_run_attestation(
         return {"status": "fail", "reason": "verdict_event_id_mismatch"}
 
     signature = attestation.get("signature")
-    algorithm = attestation.get("signature_algorithm")
+    algorithm = unsigned["signature_algorithm"]
     if signing_key is not None:
         if not isinstance(signing_key, (bytes, bytearray)) or not signing_key:
             return {"status": "fail", "reason": "signing_key_must_be_nonempty_bytes"}
@@ -226,7 +232,11 @@ def verify_run_attestation(
         expected_signature = hmac.new(bytes(signing_key), expected_hash.encode("ascii"), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(str(signature), expected_signature):
             return {"status": "fail", "reason": "signature_mismatch"}
-    elif signature is not None or algorithm is not None:
+    elif algorithm == "hmac-sha256":
+        if not signature:
+            return {"status": "fail", "reason": "signature_missing"}
         return {"status": "partial", "reason": "signature_not_verified", "attestation_hash": expected_hash}
+    elif signature is not None:
+        return {"status": "fail", "reason": "unexpected_signature"}
 
     return {"status": "pass", "reason": "attestation_verified", "attestation_hash": expected_hash}
