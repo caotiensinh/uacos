@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import uacos.runtime.evidence_guided_recovery as recovery
@@ -84,6 +85,24 @@ def test_recovery_decision_is_idempotent_for_same_run_attempt(tmp_path: Path):
     assert first["idempotent_replay"] is False
     assert second["idempotent_replay"] is True
     assert len(read_evidence_ledger(repo)) == 1
+
+
+def test_concurrent_recovery_decisions_append_exactly_once(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    result = _failed_after_tests("run-concurrent")
+
+    def decide():
+        return recovery.record_recovery_decision(repo, result, task_id="task-concurrent")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        decisions = list(pool.map(lambda _: decide(), range(2)))
+
+    event_ids = {row["evidence_event_id"] for row in decisions}
+    assert len(event_ids) == 1
+    assert all(row["action"] == "REPAIR" for row in decisions)
+    assert len(read_evidence_ledger(repo)) == 1
+    assert sorted(row["idempotent_replay"] for row in decisions) == [False, True]
 
 
 def test_recovery_action_conflict_fails_closed(tmp_path: Path):
