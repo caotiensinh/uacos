@@ -97,16 +97,31 @@ def _economics_pass(report: dict[str, Any] | None) -> bool:
 
 
 def _soak_pass(report: dict[str, Any] | None) -> bool:
+    """Require the canonical soak report plus measured token/latency drift."""
     if not _status_pass(report):
+        return False
+    if str(report.get("method") or "") != "repeated_observation_sustained_reliability_v1":
         return False
     summary = report.get("summary")
     if not isinstance(summary, dict):
         return False
-    iterations = int(summary.get("iterations", 0) or 0)
-    critical = summary.get("critical_defects")
-    if not isinstance(critical, dict):
+    try:
+        iterations = int(summary.get("iterations", 0) or 0)
+    except (TypeError, ValueError):
         return False
-    return iterations >= 10 and all(int(value or 0) == 0 for value in critical.values())
+    if iterations < 10:
+        return False
+    critical = summary.get("critical_defects")
+    if not isinstance(critical, dict) or not critical:
+        return False
+    if not all(int(value or 0) == 0 for value in critical.values()):
+        return False
+    if summary.get("verified_success_rate") is None:
+        return False
+    if summary.get("token_drift_ratio") is None or summary.get("latency_drift_ratio") is None:
+        return False
+    checks = report.get("checks")
+    return isinstance(checks, dict) and bool(checks) and all(value is True for value in checks.values())
 
 
 def _jev_ab_pass(report: dict[str, Any] | None) -> bool:
@@ -200,5 +215,5 @@ def evaluate_phase3_closure(
         "blockers": blockers,
         "required_evidence_flags": list(REQUIRED_EVIDENCE_FLAGS),
         "paths": asdict(paths),
-        "claim": "Phase 3 closes only when real-agent execution, real comparative evidence, canonically verified attestation, evidence-ledger reliability economics, sustained soak, repeated Jev OFF/ON comparison, and all required safety evidence flags are present and passing.",
+        "claim": "Phase 3 closes only when real-agent execution, real comparative evidence, canonically verified attestation, evidence-ledger reliability economics, measured sustained soak, repeated Jev OFF/ON comparison, and all required safety evidence flags are present and passing.",
     }
