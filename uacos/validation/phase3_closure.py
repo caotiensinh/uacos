@@ -73,20 +73,27 @@ def _comparative_pass(report: dict[str, Any] | None) -> bool:
 
 
 def _attestation_pass(report: dict[str, Any] | None) -> bool:
-    if not report:
+    """Accept only the canonical verifier result, not a caller-supplied boolean."""
+    if not _status_pass(report):
         return False
-    if str(report.get("status") or "").lower() != "pass":
+    if str(report.get("reason") or "") != "attestation_verified":
         return False
-    return bool(report.get("verified") is True or report.get("verification_status") == "verified")
+    return bool(str(report.get("attestation_hash") or "").strip())
 
 
 def _economics_pass(report: dict[str, Any] | None) -> bool:
-    if not _status_pass(report):
+    """Validate the canonical reliability-economics report schema."""
+    if not report or str(report.get("status") or "").lower() != "ok":
         return False
-    summary = report.get("summary")
-    if not isinstance(summary, dict):
+    if str(report.get("reason") or "") != "canonical_evidence_metrics_computed":
         return False
-    return summary.get("verified_success_rate") is not None and summary.get("tokens_per_verified_success") is not None
+    ledger = report.get("ledger")
+    if not isinstance(ledger, dict) or str(ledger.get("status") or "").lower() != "pass":
+        return False
+    metrics = report.get("metrics")
+    if not isinstance(metrics, dict):
+        return False
+    return metrics.get("verified_success_rate") is not None and metrics.get("tokens_per_verified_success") is not None
 
 
 def _soak_pass(report: dict[str, Any] | None) -> bool:
@@ -103,12 +110,22 @@ def _soak_pass(report: dict[str, Any] | None) -> bool:
 
 
 def _jev_ab_pass(report: dict[str, Any] | None) -> bool:
+    """Validate the canonical P3.14 Jev OFF/ON evaluator output."""
     if not _status_pass(report):
         return False
-    modes = report.get("modes")
-    if not isinstance(modes, dict):
+    if str(report.get("method") or "") != "same-provider-model_repeated_jev_off_on_v1":
         return False
-    return "off" in modes and "on" in modes
+    modes = report.get("modes")
+    if not isinstance(modes, list) or set(str(mode) for mode in modes) != {"jev_off", "jev_on"}:
+        return False
+    summaries = report.get("summaries")
+    if not isinstance(summaries, dict) or not {"jev_off", "jev_on"}.issubset(summaries):
+        return False
+    checks = report.get("checks")
+    if not isinstance(checks, dict) or not checks or not all(value is True for value in checks.values()):
+        return False
+    observations = report.get("observations")
+    return isinstance(observations, list) and bool(observations)
 
 
 def _evidence_summary_pass(report: dict[str, Any] | None) -> tuple[bool, list[str]]:
@@ -164,5 +181,5 @@ def evaluate_phase3_closure(
         "blockers": blockers,
         "required_evidence_flags": list(REQUIRED_EVIDENCE_FLAGS),
         "paths": asdict(paths),
-        "claim": "Phase 3 closes only when real-agent execution, real comparative evidence, verified attestation, reliability economics, sustained soak, Jev OFF/ON comparison, and all required safety evidence flags are present and passing.",
+        "claim": "Phase 3 closes only when real-agent execution, real comparative evidence, canonically verified attestation, evidence-ledger reliability economics, sustained soak, Jev OFF/ON comparison, and all required safety evidence flags are present and passing.",
     }
