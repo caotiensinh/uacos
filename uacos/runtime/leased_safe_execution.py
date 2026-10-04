@@ -5,6 +5,7 @@ from threading import Event, Thread
 from typing import Any, Callable
 
 from uacos.agent.safe_execution import run_safe_agent_execution
+from uacos.execution.evidence_ledger import append_evidence_event
 from uacos.runtime.resource_lease import SQLiteResourceLeaseStore
 
 
@@ -36,6 +37,31 @@ def _resource_scope(
     return [("dir", path) for path in kept_dirs] + [("file", path) for path in kept_files]
 
 
+def _record_lease_event(
+    repo_root: Path,
+    *,
+    status: str,
+    reason: str,
+    owner_id: str,
+    scope: list[tuple[str, str]],
+    run_id: str | None = None,
+    data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return append_evidence_event(
+        repo_root,
+        event_type="resource_lease",
+        source="uacos.runtime.leased_safe_execution",
+        status=status,
+        run_id=run_id,
+        data={
+            "reason": reason,
+            "owner_id": owner_id,
+            "scope": [[resource_type, resource_key] for resource_type, resource_key in scope],
+            **dict(data or {}),
+        },
+    )
+
+
 def run_leased_safe_agent_execution(
     repo_root: Path,
     task: str,
@@ -57,6 +83,10 @@ def run_leased_safe_agent_execution(
     `run_safe_agent_execution` before preconditions, before `apply_patch`, and before
     successful completion. Loss after apply is handled inside safe execution by
     verified rollback before the wrapper releases leases.
+
+    Lease conflicts and final lease-enforcement outcomes are also persisted to the
+    canonical evidence ledger so later closure checks can prove that concurrency
+    conflicts were blocked instead of inferring safety from missing failures.
     """
     root = Path(repo_root).resolve()
     owner = str(owner_id or "").strip()
@@ -71,10 +101,17 @@ def run_leased_safe_agent_execution(
 
     scope = _resource_scope(allowed_files, allowed_dirs)
     if not scope:
+        event = _record_lease_event(
+            root,
+            status="blocked",
+            reason="resource_lease_scope_required",
+            owner_id=owner,
+            scope=[],
+        )
         return {
             "status": "blocked",
             "reason": "resource_lease_scope_required",
-            "lease_report": {"status": "blocked", "acquired": [], "conflict": None},
+            "lease_report": {"status": "blocked", "acquired": [], "conflict": None, "lease_event_id": event["event_id"]},
         }
 
     store = lease_store or SQLiteResourceLeaseStore(root)
@@ -98,6 +135,19 @@ def run_leased_safe_agent_execution(
                         lease_token=lease["lease_token"],
                     )
                 )
+            event = _record_lease_event(
+                root,
+                status="blocked",
+                reason="resource_lease_conflict",
+                owner_id=owner,
+                scope=scope,
+                data={
+                    "conflict_status": decision.get("status"),
+                    "conflict_reason": decision.get("reason"),
+                    "resource_type": resource_type,
+                    "resource_key": resource_key,
+                },
+            )
             return {
                 "status": "blocked",
                 "reason": "resource_lease_conflict",
@@ -107,6 +157,7 @@ def run_leased_safe_agent_execution(
                     "acquired": list(acquired),
                     "conflict": decision,
                     "release_results": releases,
+                    "lease_event_id": event["event_id"],
                 },
             }
         acquired.append(dict(decision["lease"]))
@@ -200,4 +251,26 @@ def run_leased_safe_agent_execution(
     if heartbeat_failures and execution_result.get("status") == "passed":
         execution_result["status"] = "failed"
         execution_result["reason"] = "resource_lease_lost_during_execution"
+
+    run_id = str(execution_result.get("run_id") or "").strip() or None
+    lease_status = "pass" if execution_result.get("status") == "passed" and not heartbeat_failures else "fail"
+    lease_reason = (
+        "resource_lease_enforcement_passed"
+        if lease_status == "pass"
+        else str(execution_result.get("reason") or "resource_lease_enforcement_failed")
+    )
+    event = _record_lease_event(
+        root,
+        status=lease_status,
+        reason=lease_reason,
+        owner_id=owner,
+        scope=scope,
+        run_id=run_id,
+        data={
+            "heartbeat_failures": heartbeat_failures,
+            "execution_status": execution_result.get("status"),
+            "release_statuses": [row.get("status") for row in release_results],
+        },
+    )
+    execution_result["lease_report"]["lease_event_id"] = event["event_id"]
     return execution_result
