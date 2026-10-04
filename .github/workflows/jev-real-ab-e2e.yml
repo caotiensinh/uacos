@@ -1,0 +1,78 @@
+name: Jev real OFF ON E2E
+
+on:
+  pull_request:
+    paths:
+      - "uacos/benchmarks/jev_ab.py"
+      - "uacos/judgment/jev.py"
+      - "uacos/judgment/typesafe_http.py"
+      - "scripts/run_real_jev_ab_e2e.py"
+      - "tests/test_phase3_jev_ab_evaluator.py"
+      - ".github/workflows/jev-real-ab-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[test]
+      - name: Compile Jev benchmark entrypoints
+        run: python -m py_compile uacos/benchmarks/jev_ab.py scripts/run_real_jev_ab_e2e.py
+      - name: Jev evaluator contract tests
+        run: python -m pytest -q tests/test_phase3_jev_ab_evaluator.py tests/test_phase3_jev_judgment_adapter.py tests/test_phase3_typesafe_jev_http.py
+
+  live-jev-ab:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: contract
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 90
+    env:
+      UACOS_JEV_BENCHMARK_PROVIDER: codex
+      UACOS_JEV_BENCHMARK_MODEL: ${{ vars.UACOS_JEV_BENCHMARK_MODEL }}
+      UACOS_TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+      UACOS_CODEX_ARGV_JSON: ${{ secrets.UACOS_CODEX_ARGV_JSON }}
+      UACOS_CLAUDE_CODE_ARGV_JSON: ${{ secrets.UACOS_CLAUDE_CODE_ARGV_JSON }}
+      UACOS_GOOSE_ARGV_JSON: ${{ secrets.UACOS_GOOSE_ARGV_JSON }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[test]
+      - name: Provider readiness evidence
+        run: python scripts/provider_readiness.py --output reports/jev-real-ab/provider_readiness.json --require-ready
+      - name: Credential preflight without secret disclosure
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${UACOS_TYPESAFE_API_KEY:-}" && -z "${TYPESAFE_API_KEY:-}" ]]; then
+            echo "typesafe_api_key_missing"
+            exit 2
+          fi
+      - name: Real Jev OFF ON repeated E2E
+        run: python scripts/run_real_jev_ab_e2e.py --provider "$UACOS_JEV_BENCHMARK_PROVIDER" --repeats 3 --output-dir reports/jev-real-ab --require-pass
+      - name: Upload Jev A/B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jev-real-ab-${{ github.run_id }}
+          path: reports/jev-real-ab/
+          if-no-files-found: warn
+          retention-days: 90
