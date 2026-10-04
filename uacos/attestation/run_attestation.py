@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 
-from uacos.execution.evidence_ledger import verify_evidence_ledger
+from uacos.execution.evidence_ledger import read_evidence_ledger, verify_evidence_ledger
 
 
 ALLOWED_FINAL_STATUSES = {"pass", "fail", "blocked", "unknown"}
@@ -49,6 +49,29 @@ def _nonempty(value: str | None, reason: str) -> str:
     return normalized
 
 
+def _find_verdict_event(
+    repo_root: Path,
+    *,
+    verdict_event_id: str,
+    run_id: str,
+    task_id: str | None,
+    final_status: str,
+) -> dict[str, Any] | None:
+    for row in read_evidence_ledger(repo_root):
+        if row.get("event_id") != verdict_event_id:
+            continue
+        if str(row.get("event_type") or "") != "outcome_verdict":
+            return None
+        if row.get("run_id") != run_id:
+            return None
+        if task_id is not None and row.get("task_id") != task_id:
+            return None
+        if str(row.get("status") or "").strip().lower() != final_status:
+            return None
+        return row
+    return None
+
+
 def create_run_attestation(
     repo_root: Path,
     *,
@@ -57,17 +80,19 @@ def create_run_attestation(
     workspace_sha: str,
     final_status: str,
     rollback_state: str,
+    verdict_event_id: str,
     task_id: str | None = None,
     signing_key: bytes | None = None,
 ) -> dict[str, Any]:
     """Create a canonical evidence-bound attestation for one run.
 
-    This function does not decide whether a task passed. final_status must come from
-    an authoritative deterministic verifier. The function binds that verdict to the
-    Task Contract V2, workspace SHA, and current canonical evidence-ledger head.
+    The supplied final status is accepted only when a canonical ``outcome_verdict``
+    event with the same run/task/status already exists. This function never derives
+    PASS from prose or from an arbitrary caller-supplied string.
     """
     run_id = _nonempty(run_id, "run_id_required")
     workspace_sha = _nonempty(workspace_sha, "workspace_sha_required")
+    verdict_event_id = _nonempty(verdict_event_id, "verdict_event_id_required")
     final_status = _normalized_status(final_status)
     rollback_state = _normalized_rollback(rollback_state)
     task_id = str(task_id or "").strip() or None
@@ -81,6 +106,20 @@ def create_run_attestation(
             "ledger_integrity": integrity,
         }
 
+    verdict = _find_verdict_event(
+        repo_root,
+        verdict_event_id=verdict_event_id,
+        run_id=run_id,
+        task_id=task_id,
+        final_status=final_status,
+    )
+    if verdict is None:
+        return {
+            "status": "fail",
+            "reason": "canonical_verdict_evidence_missing_or_mismatched",
+            "verdict_event_id": verdict_event_id,
+        }
+
     payload = {
         "version": 1,
         "run_id": run_id,
@@ -88,6 +127,7 @@ def create_run_attestation(
         "workspace_sha": workspace_sha,
         "contract_id": contract.get("contract_id"),
         "contract_hash": contract_hash,
+        "verdict_event_id": verdict_event_id,
         "evidence_head_hash": integrity["head_hash"],
         "evidence_records": int(integrity.get("records", 0)),
         "final_status": final_status,
@@ -107,7 +147,9 @@ def create_run_attestation(
     if signing_key is not None:
         if not isinstance(signing_key, (bytes, bytearray)) or not signing_key:
             raise ValueError("signing_key_must_be_nonempty_bytes")
-        result["attestation"]["signature"] = hmac.new(bytes(signing_key), attestation_hash.encode("ascii"), hashlib.sha256).hexdigest()
+        result["attestation"]["signature"] = hmac.new(
+            bytes(signing_key), attestation_hash.encode("ascii"), hashlib.sha256
+        ).hexdigest()
     return result
 
 
@@ -117,9 +159,10 @@ def verify_run_attestation(
     expected_contract: dict[str, Any] | None = None,
     expected_workspace_sha: str | None = None,
     expected_evidence_head_hash: str | None = None,
+    expected_verdict_event_id: str | None = None,
     signing_key: bytes | None = None,
 ) -> dict[str, Any]:
-    """Verify canonical hash, optional expectations, and optional HMAC signature."""
+    """Verify canonical hash, expectations, verdict binding, and optional HMAC."""
     if not isinstance(attestation, dict):
         return {"status": "fail", "reason": "attestation_must_be_mapping"}
     if attestation.get("version") != 1:
@@ -134,6 +177,7 @@ def verify_run_attestation(
             "workspace_sha",
             "contract_id",
             "contract_hash",
+            "verdict_event_id",
             "evidence_head_hash",
             "evidence_records",
             "final_status",
@@ -143,6 +187,7 @@ def verify_run_attestation(
     try:
         _nonempty(unsigned["run_id"], "run_id_required")
         _nonempty(unsigned["workspace_sha"], "workspace_sha_required")
+        _nonempty(unsigned["verdict_event_id"], "verdict_event_id_required")
         _normalized_status(str(unsigned["final_status"] or ""))
         _normalized_rollback(str(unsigned["rollback_state"] or ""))
         if int(unsigned["evidence_records"]) < 0:
@@ -168,6 +213,8 @@ def verify_run_attestation(
         return {"status": "fail", "reason": "workspace_sha_mismatch"}
     if expected_evidence_head_hash is not None and unsigned["evidence_head_hash"] != str(expected_evidence_head_hash):
         return {"status": "fail", "reason": "evidence_head_hash_mismatch"}
+    if expected_verdict_event_id is not None and unsigned["verdict_event_id"] != str(expected_verdict_event_id):
+        return {"status": "fail", "reason": "verdict_event_id_mismatch"}
 
     signature = attestation.get("signature")
     algorithm = attestation.get("signature_algorithm")
@@ -180,8 +227,6 @@ def verify_run_attestation(
         if not hmac.compare_digest(str(signature), expected_signature):
             return {"status": "fail", "reason": "signature_mismatch"}
     elif signature is not None or algorithm is not None:
-        # A signed attestation can still have its content hash verified without a key,
-        # but callers must not mistake that for signature verification.
         return {"status": "partial", "reason": "signature_not_verified", "attestation_hash": expected_hash}
 
     return {"status": "pass", "reason": "attestation_verified", "attestation_hash": expected_hash}
