@@ -26,6 +26,8 @@ def collect_reliability_economics(repo_root: Path) -> dict[str, Any]:
 
     Metrics are intentionally evidence-derived. Missing denominators are reported as
     None instead of optimistic zeroes, and a corrupt ledger fails the report closed.
+    Metrics that do not yet have a canonical event contract are explicitly unavailable
+    instead of being inferred from optional/ad-hoc metadata.
     """
     root = Path(repo_root)
     integrity = verify_evidence_ledger(root)
@@ -58,12 +60,6 @@ def collect_reliability_economics(repo_root: Path) -> dict[str, Any]:
     other_verdict_runs = len(verdicts) - pass_runs - fail_runs
 
     total_tokens = sum(_row_tokens(row) for row in token_rows)
-    retry_tokens = sum(
-        _row_tokens(row)
-        for row in token_rows
-        if int((row.get("data") or {}).get("repair_attempt", 0) or 0) > 0
-        or bool((row.get("data") or {}).get("retry", False))
-    )
 
     recovery_actions: dict[str, int] = {}
     mutation_failures = 0
@@ -94,8 +90,8 @@ def collect_reliability_economics(repo_root: Path) -> dict[str, Any]:
         "token_settlement_events": len(token_rows),
         "tokens_per_verified_run": _ratio(total_tokens, len(verdicts)),
         "tokens_per_verified_success": _ratio(total_tokens, pass_runs),
-        "retry_tokens": retry_tokens,
-        "retry_token_ratio": _ratio(retry_tokens, total_tokens),
+        "retry_tokens": None,
+        "retry_token_ratio": None,
         "recovery_decisions": len(recovery_rows),
         "recovery_actions": dict(sorted(recovery_actions.items())),
         "repair_decisions": repair_decisions,
@@ -106,6 +102,8 @@ def collect_reliability_economics(repo_root: Path) -> dict[str, Any]:
     }
 
     unavailable = {
+        "retry_tokens": "token_usage_settled has no canonical retry/repair-attempt marker",
+        "retry_token_ratio": "requires canonical retry-token attribution events",
         "false_completion_rate": "requires canonical claim-to-outcome correlation events",
         "unsupported_claim_rate": "requires canonical claim-firewall event accounting",
         "wrong_change_rate": "requires canonical accepted-change correctness labels",
