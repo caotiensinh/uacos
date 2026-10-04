@@ -71,18 +71,21 @@ jobs:
           copy_if_set UACOS_SECRET_OPENAI_API_KEY OPENAI_API_KEY
           copy_if_set UACOS_SECRET_CODEX_API_KEY CODEX_API_KEY
       - name: TypeSafe credential preflight without secret disclosure
+        id: typesafe_preflight
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${UACOS_TYPESAFE_API_KEY:-}" && -z "${TYPESAFE_API_KEY:-}" ]]; then
-            mkdir -p reports/jev-real-ab
-            printf '{"status":"blocked","blocker":"typesafe_api_key_missing"}\n' > reports/jev-real-ab/preflight.json
-            echo "typesafe_api_key_missing"
-            exit 2
-          fi
           mkdir -p reports/jev-real-ab
-          printf '{"status":"pass","typesafe_credential_present":true}\n' > reports/jev-real-ab/preflight.json
+          if [[ -z "${UACOS_TYPESAFE_API_KEY:-}" && -z "${TYPESAFE_API_KEY:-}" ]]; then
+            printf '{"status":"blocked","blocker":"typesafe_api_key_missing","benchmark_required":false}\n' > reports/jev-real-ab/preflight.json
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Jev commercial benchmark BLOCKED: typesafe_api_key_missing"
+            exit 0
+          fi
+          printf '{"status":"pass","typesafe_credential_present":true,"benchmark_required":false}\n' > reports/jev-real-ab/preflight.json
+          echo "available=true" >> "$GITHUB_OUTPUT"
       - name: Bootstrap Codex CLI if runner does not provide it
+        if: steps.typesafe_preflight.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -99,6 +102,7 @@ jobs:
           echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
           "$prefix/node_modules/.bin/codex" --version
       - name: Resolve exact Codex model and safe argv
+        if: steps.typesafe_preflight.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -135,8 +139,10 @@ jobs:
             printf 'UACOS_CODEX_ARGV_JSON=%s\n' "$argv_json" >> "$GITHUB_ENV"
           fi
       - name: Provider readiness evidence
+        if: steps.typesafe_preflight.outputs.available == 'true'
         run: python scripts/provider_readiness.py --output reports/jev-real-ab/provider_readiness.json
       - name: Real Jev OFF ON repeated E2E
+        if: steps.typesafe_preflight.outputs.available == 'true'
         run: python scripts/run_real_jev_ab_e2e.py --provider "$UACOS_JEV_BENCHMARK_PROVIDER" --repeats 3 --output-dir reports/jev-real-ab --require-pass
       - name: Upload Jev A/B evidence
         if: always()
