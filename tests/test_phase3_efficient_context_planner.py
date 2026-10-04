@@ -20,14 +20,17 @@ def test_wrapper_keeps_target_and_contract_and_drops_low_value_support(tmp_path:
         },
     )
 
-    result = efficient.build_efficient_context_plan(tmp_path, {"task": "fix run"}, max_tokens=200)
+    # target ~= 140 tokens and contract ~= 135 tokens with the repo's
+    # conservative len(text)/4 estimator. The budget must fit mandatory
+    # context while remaining too small for the low-value support entry.
+    result = efficient.build_efficient_context_plan(tmp_path, {"task": "fix run"}, max_tokens=300)
 
     assert result["status"] == "ok"
     roles = [row["role"] for row in result["entries"]]
     assert "target" in roles
     assert "contract" in roles
     assert "support" not in roles
-    assert result["token_count"] <= 200
+    assert result["token_count"] <= 300
     assert result["token_savings_vs_all_unique"] > 0
 
 
