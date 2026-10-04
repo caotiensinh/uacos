@@ -42,7 +42,9 @@ def _normalize_resource(resource_type: str, resource_key: str) -> tuple[str, str
     path = PurePosixPath(key.replace("\\", "/"))
     if path.is_absolute() or ".." in path.parts:
         raise ValueError("resource_path_must_be_repo_relative")
-    normalized = path.as_posix().lstrip("./")
+    normalized = path.as_posix()
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
     if not normalized or normalized == ".":
         raise ValueError("resource_key_required")
     return kind, normalized
@@ -57,7 +59,6 @@ def _is_within(path: str, directory: str) -> bool:
 def resources_conflict(a_type: str, a_key: str, b_type: str, b_key: str) -> bool:
     a_type, a_key = _normalize_resource(a_type, a_key)
     b_type, b_key = _normalize_resource(b_type, b_key)
-
     if a_type in {"branch", "task"} or b_type in {"branch", "task"}:
         return a_type == b_type and a_key == b_key
     if a_type == "file" and b_type == "file":
@@ -86,6 +87,7 @@ class SQLiteResourceLeaseStore:
         root = uacos_dir(self.repo_root)
         root.mkdir(parents=True, exist_ok=True)
         self.db_path = Path(db_path) if db_path is not None else root / "resource_leases.sqlite3"
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_schema()
 
     def _connect(self) -> sqlite3.Connection:
@@ -117,7 +119,7 @@ class SQLiteResourceLeaseStore:
     def _row_to_lease(row: sqlite3.Row) -> ResourceLease:
         try:
             metadata = json.loads(row["metadata_json"] or "{}")
-        except (TypeError, ValueError, json.JSONDecodeError):
+        except (TypeError, ValueError):
             metadata = {}
         if not isinstance(metadata, dict):
             metadata = {}
@@ -166,11 +168,7 @@ class SQLiteResourceLeaseStore:
                         return {"status": "ok", "reason": "lease_already_held", "idempotent": True, "lease": lease.to_dict()}
                     if resources_conflict(kind, key, lease.resource_type, lease.resource_key):
                         conn.execute("COMMIT")
-                        return {
-                            "status": "blocked",
-                            "reason": "resource_lease_conflict",
-                            "conflict": lease.to_dict(),
-                        }
+                        return {"status": "blocked", "reason": "resource_lease_conflict", "conflict": lease.to_dict()}
 
                 token = uuid.uuid4().hex
                 expires = now + ttl
