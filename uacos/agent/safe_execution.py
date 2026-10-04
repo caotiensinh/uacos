@@ -10,6 +10,7 @@ from uacos.patching.engine import apply_patch, rollback_patch
 from uacos.patching.preconditions import capture_patch_preconditions, verify_patch_preconditions
 from uacos.config import uacos_dir
 from uacos.security.approval import verify_approval_record
+from uacos.security.evidence_gate import evaluate_mutation_evidence_gate
 from uacos.security.patch_review import review_patch_text
 from uacos.security.policy import evaluate_patch_policy, load_policy
 
@@ -77,8 +78,13 @@ def run_safe_agent_execution(
     max_context_chars: int = 18000,
     policy_path: Path | None = None,
     approval_record: dict | None = None,
+    mutation_evidence_contract: dict[str, Any] | None = None,
 ) -> dict:
-    """Run agent -> policy/approval -> stale-check -> apply -> tests -> verified rollback."""
+    """Run agent -> policy/approval -> evidence gate -> stale-check -> apply -> tests -> verified rollback.
+
+    `mutation_evidence_contract` is opt-in so legacy callers preserve their behavior.
+    When enabled, source mutation is denied until canonical evidence requirements pass.
+    """
     repo_root = repo_root.resolve()
     allowed_files = list(allowed_files or [])
     allowed_dirs = list(allowed_dirs or [])
@@ -104,6 +110,7 @@ def run_safe_agent_execution(
         "patch_review": None,
         "policy_decision": None,
         "approval_verification": None,
+        "evidence_gate": None,
         "preconditions": None,
         "precondition_verification": None,
         "patch_apply": None,
@@ -156,6 +163,21 @@ def run_safe_agent_execution(
                 result["status"] = "blocked"
                 result["reason"] = "human_approval_required" if approval_record is None else "invalid_human_approval"
                 return result
+
+    if mutation_evidence_contract is not None:
+        gate = evaluate_mutation_evidence_gate(
+            repo_root,
+            patch_text=patch_text,
+            allowed_files=allowed_files,
+            allowed_dirs=allowed_dirs,
+            contract=mutation_evidence_contract,
+            run_id=harness["run_id"],
+        )
+        result["evidence_gate"] = gate
+        if gate.get("decision") != "allow":
+            result["status"] = "blocked"
+            result["reason"] = "mutation_evidence_gate_blocked"
+            return result
 
     preconditions = capture_patch_preconditions(repo_root, patch_text)
     result["preconditions"] = preconditions
