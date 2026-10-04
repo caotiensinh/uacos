@@ -35,12 +35,21 @@ def _seed_valid(root: Path) -> None:
             "repeats": 3,
         },
     )
-    _write(root / "reports/attestation.json", {"status": "pass", "verified": True})
+    _write(
+        root / "reports/attestation.json",
+        {
+            "status": "pass",
+            "reason": "attestation_verified",
+            "attestation_hash": "a" * 64,
+        },
+    )
     _write(
         root / "reports/economics.json",
         {
-            "status": "pass",
-            "summary": {"verified_success_rate": 1.0, "tokens_per_verified_success": 100.0},
+            "status": "ok",
+            "reason": "canonical_evidence_metrics_computed",
+            "ledger": {"status": "pass", "head_hash": "b" * 64, "records": 8},
+            "metrics": {"verified_success_rate": 1.0, "tokens_per_verified_success": 100.0},
         },
     )
     _write(
@@ -62,7 +71,25 @@ def _seed_valid(root: Path) -> None:
             },
         },
     )
-    _write(root / "reports/jev_ab.json", {"status": "pass", "modes": {"off": {}, "on": {}}})
+    _write(
+        root / "reports/jev_ab.json",
+        {
+            "status": "pass",
+            "method": "same-provider-model_repeated_jev_off_on_v1",
+            "modes": ["jev_off", "jev_on"],
+            "summaries": {"jev_off": {"runs": 3}, "jev_on": {"runs": 3}},
+            "checks": {
+                "verified_success_not_regressed": True,
+                "token_cost_bounded": True,
+                "latency_cost_bounded": True,
+                "ranking_quality_not_regressed": True,
+            },
+            "observations": [
+                {"task_id": "T1", "mode": "jev_off", "repeat": 1},
+                {"task_id": "T1", "mode": "jev_on", "repeat": 1},
+            ],
+        },
+    )
     _write(
         root / "reports/evidence.json",
         {
@@ -100,10 +127,36 @@ def test_missing_report_fails_closed(tmp_path: Path):
 
 def test_unverified_attestation_cannot_close_phase3(tmp_path: Path):
     _seed_valid(tmp_path)
-    _write(tmp_path / "reports/attestation.json", {"status": "pass", "verified": False})
+    _write(
+        tmp_path / "reports/attestation.json",
+        {"status": "pass", "reason": "signature_not_verified", "attestation_hash": "a" * 64},
+    )
     result = evaluate_phase3_closure(tmp_path, paths=_paths())
     assert result["status"] == "fail"
     assert "closure_check_failed:run_attestation" in result["blockers"]
+
+
+def test_attestation_without_hash_fails(tmp_path: Path):
+    _seed_valid(tmp_path)
+    _write(tmp_path / "reports/attestation.json", {"status": "pass", "reason": "attestation_verified"})
+    result = evaluate_phase3_closure(tmp_path, paths=_paths())
+    assert result["status"] == "fail"
+
+
+def test_economics_requires_canonical_schema_and_valid_ledger(tmp_path: Path):
+    _seed_valid(tmp_path)
+    _write(
+        tmp_path / "reports/economics.json",
+        {
+            "status": "ok",
+            "reason": "canonical_evidence_metrics_computed",
+            "ledger": {"status": "fail"},
+            "metrics": {"verified_success_rate": 1.0, "tokens_per_verified_success": 100.0},
+        },
+    )
+    result = evaluate_phase3_closure(tmp_path, paths=_paths())
+    assert result["status"] == "fail"
+    assert "closure_check_failed:reliability_economics" in result["blockers"]
 
 
 def test_soak_with_too_few_iterations_fails(tmp_path: Path):
@@ -125,12 +178,23 @@ def test_any_soak_critical_defect_fails(tmp_path: Path):
     assert result["status"] == "fail"
 
 
-def test_jev_ab_requires_both_off_and_on_modes(tmp_path: Path):
+def test_jev_ab_requires_canonical_modes(tmp_path: Path):
     _seed_valid(tmp_path)
-    _write(tmp_path / "reports/jev_ab.json", {"status": "pass", "modes": {"off": {}}})
+    report = json.loads((tmp_path / "reports/jev_ab.json").read_text())
+    report["modes"] = ["jev_off"]
+    _write(tmp_path / "reports/jev_ab.json", report)
     result = evaluate_phase3_closure(tmp_path, paths=_paths())
     assert result["status"] == "fail"
     assert "closure_check_failed:jev_off_on_comparison" in result["blockers"]
+
+
+def test_jev_ab_failed_check_cannot_close_phase3(tmp_path: Path):
+    _seed_valid(tmp_path)
+    report = json.loads((tmp_path / "reports/jev_ab.json").read_text())
+    report["checks"]["token_cost_bounded"] = False
+    _write(tmp_path / "reports/jev_ab.json", report)
+    result = evaluate_phase3_closure(tmp_path, paths=_paths())
+    assert result["status"] == "fail"
 
 
 def test_missing_safety_evidence_flag_fails(tmp_path: Path):
