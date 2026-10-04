@@ -42,6 +42,7 @@ def test_verified_rollback_allows_one_bounded_repair_and_persists_event(tmp_path
     assert rows[0]["task_id"] == "task-1"
     assert rows[0]["run_id"] == "run-1"
     assert rows[0]["data"]["rollback_verified"] is True
+    assert rows[0]["data"]["real_failure_observed"] is True
 
 
 def test_mutated_failure_without_verified_rollback_stops(tmp_path: Path):
@@ -118,6 +119,58 @@ def test_recovery_action_conflict_fails_closed(tmp_path: Path):
     assert conflict["reason"] == "recovery_action_id_conflict"
     assert conflict["persisted"] is False
     assert len(read_evidence_ledger(repo)) == 1
+
+
+def test_recovery_replay_requires_same_rollback_and_control_inputs(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    recovery.record_recovery_decision(
+        repo,
+        _failed_after_tests(rolled_back=True),
+        task_id="task-1",
+        repair_attempts=0,
+        max_repair_attempts=1,
+        repeated_failure=False,
+    )
+
+    rollback_changed = recovery.record_recovery_decision(
+        repo,
+        _failed_after_tests(rolled_back=False),
+        task_id="task-1",
+        repair_attempts=0,
+        max_repair_attempts=1,
+        repeated_failure=False,
+    )
+    assert rollback_changed["action"] == "STOP"
+    assert rollback_changed["reason"] == "recovery_action_id_conflict"
+
+    repeated_changed = recovery.record_recovery_decision(
+        repo,
+        _failed_after_tests(rolled_back=True),
+        task_id="task-1",
+        repair_attempts=0,
+        max_repair_attempts=1,
+        repeated_failure=True,
+    )
+    assert repeated_changed["action"] == "STOP"
+    assert repeated_changed["reason"] == "recovery_action_id_conflict"
+    assert len(read_evidence_ledger(repo)) == 1
+
+
+def test_task_id_is_part_of_recovery_identity_when_run_is_unbound(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    first = _failed_after_tests("")
+    second = _failed_after_tests("")
+
+    one = recovery.record_recovery_decision(repo, first, task_id="task-a")
+    two = recovery.record_recovery_decision(repo, second, task_id="task-b")
+
+    assert one["action"] == "REPAIR"
+    assert two["action"] == "REPAIR"
+    assert one["evidence_event_id"] != two["evidence_event_id"]
+    assert len(read_evidence_ledger(repo)) == 2
 
 
 def test_tampered_ledger_blocks_recovery_decision_without_append(tmp_path: Path):
