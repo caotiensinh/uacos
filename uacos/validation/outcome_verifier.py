@@ -145,19 +145,19 @@ def verify_task_outcome(
     )
 
     mutation_required = bool((contract.get("scope") or {}).get("allowed_files") or (contract.get("scope") or {}).get("allowed_dirs"))
-    code_rows = [
+    code_diff_rows = [
         row
         for row in rows
-        if str(row.get("event_type") or "") in {"patch_apply", "mutation", "mutation_gate"}
+        if str(row.get("event_type") or "") in {"patch_apply", "mutation"}
         and _status_pass(row)
+        and bool(row.get("diff_hash"))
     ]
-    code_diff_rows = [row for row in code_rows if row.get("diff_hash") or str(row.get("event_type") or "") == "mutation_gate"]
     code_valid = (not mutation_required) or bool(code_diff_rows)
 
     layers = {
         "CODE_VALID": {
             "state": "PASS" if code_valid else "FAIL",
-            "reason": "verified_mutation_evidence" if mutation_required and code_valid else ("not_required" if not mutation_required else "mutation_evidence_missing"),
+            "reason": "verified_mutation_evidence" if mutation_required and code_valid else ("not_required" if not mutation_required else "applied_diff_evidence_missing"),
         },
         "TEST_VALID": _layer(required_tests, passed_tests, failed_tests),
         "SYSTEM_VALID": _layer(required_runtime, passed_runtime, failed_runtime),
