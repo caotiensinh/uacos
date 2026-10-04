@@ -135,8 +135,12 @@ def test_conflict_blocks_before_safe_execution_and_records_canonical_event(tmp_p
     assert event["status"] == "blocked"
     assert event["data"]["reason"] == "resource_lease_conflict"
     assert event["data"]["owner_id"] == "agent-a"
-    assert event["data"]["resource_type"] == "dir"
-    assert event["data"]["resource_key"] == "src"
+    assert event["data"]["resource_type"] == "file"
+    assert event["data"]["resource_key"] == "src/app.py"
+    conflict = result["lease_report"]["conflict"]["conflict"]
+    assert conflict["resource_type"] == "dir"
+    assert conflict["resource_key"] == "src"
+    assert conflict["owner_id"] == "other"
 
 
 def test_wrapper_passes_fencing_guard_releases_lease_and_records_success(tmp_path: Path):
