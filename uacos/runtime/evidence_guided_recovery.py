@@ -85,8 +85,11 @@ def _record_locked(
     failure_reason = str(result.get("reason") or "unknown_failure")
     mutation_applied = _mutation_applied(result)
     rollback_verified = _rollback_verified(result)
+    real_failure_observed = _observed_failure(result)
     run_id = str(result.get("run_id") or "") or None
-    action_id = f"recovery:{run_id or 'unbound'}:{repair_attempts}"
+    task_key = str(task_id or "").strip() or "untasked"
+    run_key = run_id or "unbound"
+    action_id = f"recovery:{task_key}:{run_key}:{repair_attempts}"
 
     existing = next(
         (
@@ -98,11 +101,18 @@ def _record_locked(
     )
     if existing is not None:
         data = existing.get("data") or {}
-        if (
-            existing.get("run_id") != run_id
-            or existing.get("task_id") != task_id
-            or str(data.get("failure_reason") or "") != failure_reason
-        ):
+        replay_matches = (
+            existing.get("run_id") == run_id
+            and existing.get("task_id") == task_id
+            and str(data.get("failure_reason") or "") == failure_reason
+            and bool(data.get("mutation_applied")) == mutation_applied
+            and bool(data.get("rollback_verified")) == rollback_verified
+            and bool(data.get("real_failure_observed")) == real_failure_observed
+            and int(data.get("repair_attempts", -1)) == repair_attempts
+            and int(data.get("max_repair_attempts", -1)) == max_repair_attempts
+            and bool(data.get("repeated_failure")) == repeated_failure
+        )
+        if not replay_matches:
             return {
                 "action": "STOP",
                 "reason": "recovery_action_id_conflict",
@@ -118,7 +128,7 @@ def _record_locked(
 
     decision = plan_recovery(
         failure_reason,
-        real_failure_observed=_observed_failure(result),
+        real_failure_observed=real_failure_observed,
         mutation_applied=mutation_applied,
         rollback_verified=rollback_verified,
         repeated_failure=repeated_failure,
@@ -136,6 +146,7 @@ def _record_locked(
         action_id=action_id,
         data={
             "failure_reason": failure_reason,
+            "real_failure_observed": real_failure_observed,
             "mutation_applied": mutation_applied,
             "rollback_verified": rollback_verified,
             "repair_attempts": repair_attempts,
