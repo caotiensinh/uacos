@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from uacos.execution.evidence_ledger import append_evidence_event, evidence_ledger_path, read_evidence_ledger
