@@ -105,8 +105,9 @@ def run_safe_agent_execution(
 
     `mutation_evidence_contract` and `mutation_guard` are opt-in so legacy callers
     preserve their behavior. When a mutation guard is supplied, source mutation is
-    denied unless the guard passes before precondition capture and again immediately
-    before `apply_patch`.
+    denied unless the guard passes before precondition capture, immediately before
+    `apply_patch`, and again before a successful applied result is committed to the
+    caller. Losing the guard after apply triggers verified rollback.
     """
     repo_root = repo_root.resolve()
     allowed_files = list(allowed_files or [])
@@ -252,6 +253,22 @@ def run_safe_agent_execution(
     test_report = _run_policy_tests(repo_root, tests, timeout_seconds)
     result["tests"] = test_report
     if test_report["status"] == "pass":
+        if mutation_guard is not None:
+            guard = _evaluate_mutation_guard(mutation_guard, "before_success")
+            result["mutation_guard"].append(guard)
+            if guard.get("status") != "pass":
+                rollback = _rollback_after_test_failure(repo_root, applied, preconditions)
+                result["rollback"] = rollback
+                if rollback["status"] == "rolled_back":
+                    result["status"] = "blocked"
+                    result["reason"] = "mutation_guard_lost_after_apply"
+                elif rollback.get("engine_result", {}).get("status") == "ok" and rollback.get("verification", {}).get("status") != "pass":
+                    result["status"] = "failed"
+                    result["reason"] = "rollback_verification_failed"
+                else:
+                    result["status"] = "failed"
+                    result["reason"] = "rollback_failed"
+                return result
         result["status"] = "passed"
         result["reason"] = "patch_applied_tests_passed"
         return result
