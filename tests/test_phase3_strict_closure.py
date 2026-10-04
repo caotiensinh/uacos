@@ -71,12 +71,17 @@ def _seed_valid(root: Path) -> None:
             },
         },
     )
+    observations = []
+    for repeat in range(1, 4):
+        observations.append({"task_id": "T1", "mode": "jev_off", "repeat": repeat})
+        observations.append({"task_id": "T1", "mode": "jev_on", "repeat": repeat})
     _write(
         root / "reports/jev_ab.json",
         {
             "status": "pass",
             "method": "same-provider-model_repeated_jev_off_on_v1",
             "modes": ["jev_off", "jev_on"],
+            "thresholds": {"min_repeats": 3},
             "summaries": {"jev_off": {"runs": 3}, "jev_on": {"runs": 3}},
             "checks": {
                 "verified_success_not_regressed": True,
@@ -84,10 +89,7 @@ def _seed_valid(root: Path) -> None:
                 "latency_cost_bounded": True,
                 "ranking_quality_not_regressed": True,
             },
-            "observations": [
-                {"task_id": "T1", "mode": "jev_off", "repeat": 1},
-                {"task_id": "T1", "mode": "jev_on", "repeat": 1},
-            ],
+            "observations": observations,
         },
     )
     _write(
@@ -182,6 +184,19 @@ def test_jev_ab_requires_canonical_modes(tmp_path: Path):
     _seed_valid(tmp_path)
     report = json.loads((tmp_path / "reports/jev_ab.json").read_text())
     report["modes"] = ["jev_off"]
+    _write(tmp_path / "reports/jev_ab.json", report)
+    result = evaluate_phase3_closure(tmp_path, paths=_paths())
+    assert result["status"] == "fail"
+    assert "closure_check_failed:jev_off_on_comparison" in result["blockers"]
+
+
+def test_jev_ab_requires_minimum_repeats_even_if_report_claims_pass(tmp_path: Path):
+    _seed_valid(tmp_path)
+    report = json.loads((tmp_path / "reports/jev_ab.json").read_text())
+    report["thresholds"]["min_repeats"] = 1
+    report["summaries"]["jev_off"]["runs"] = 1
+    report["summaries"]["jev_on"]["runs"] = 1
+    report["observations"] = report["observations"][:2]
     _write(tmp_path / "reports/jev_ab.json", report)
     result = evaluate_phase3_closure(tmp_path, paths=_paths())
     assert result["status"] == "fail"
