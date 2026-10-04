@@ -5,7 +5,7 @@ from threading import Event, Thread
 from typing import Any, Callable
 
 from uacos.agent.safe_execution import run_safe_agent_execution
-from uacos.execution.evidence_ledger import append_evidence_event
+from uacos.execution.evidence_ledger import append_evidence_event, verify_evidence_ledger
 from uacos.runtime.resource_lease import SQLiteResourceLeaseStore
 
 
@@ -86,7 +86,9 @@ def run_leased_safe_agent_execution(
 
     Lease conflicts and final lease-enforcement outcomes are also persisted to the
     canonical evidence ledger so later closure checks can prove that concurrency
-    conflicts were blocked instead of inferring safety from missing failures.
+    conflicts were blocked instead of inferring safety from missing failures. The
+    existing ledger must verify before any lease is acquired or source mutation can
+    begin; a tampered ledger therefore fails closed and is never extended.
     """
     root = Path(repo_root).resolve()
     owner = str(owner_id or "").strip()
@@ -98,6 +100,20 @@ def run_leased_safe_agent_execution(
     interval = float(heartbeat_interval_seconds) if heartbeat_interval_seconds is not None else max(0.1, ttl / 3.0)
     if interval <= 0 or interval >= ttl:
         raise ValueError("heartbeat_interval_must_be_positive_and_less_than_ttl")
+
+    ledger_check = verify_evidence_ledger(root)
+    if ledger_check.get("status") != "pass":
+        return {
+            "status": "blocked",
+            "reason": "evidence_ledger_invalid",
+            "lease_report": {
+                "status": "blocked",
+                "acquired": [],
+                "conflict": None,
+                "lease_event_id": None,
+                "ledger": ledger_check,
+            },
+        }
 
     scope = _resource_scope(allowed_files, allowed_dirs)
     if not scope:
