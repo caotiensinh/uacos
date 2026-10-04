@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from uacos.execution.evidence_ledger import append_evidence_event
 from uacos.validation.phase3_closure import Phase3ClosurePaths, evaluate_phase3_closure
 
 
@@ -103,6 +104,48 @@ def _seed_valid(root: Path) -> None:
             "observations": observations,
         },
     )
+
+    claim = append_evidence_event(
+        root,
+        event_type="claim_decision",
+        source="claim_firewall",
+        status="supported",
+        data={"claim_id": "C1", "decision": "SUPPORTED"},
+    )
+    mutation_gate = append_evidence_event(
+        root,
+        event_type="mutation_gate",
+        source="evidence_gate",
+        status="pass",
+        data={"decision": "allow", "reason": "evidence_requirements_satisfied"},
+    )
+    outcome = append_evidence_event(
+        root,
+        event_type="outcome_verdict",
+        source="uacos.validation.outcome_verifier",
+        status="pass",
+        data={"overall": "PASS", "done_state": "done"},
+    )
+    rollback = append_evidence_event(
+        root,
+        event_type="recovery_decision",
+        source="uacos.runtime.evidence_guided_recovery",
+        status="repair",
+        data={
+            "real_failure_observed": True,
+            "mutation_applied": True,
+            "rollback_verified": True,
+            "decision": {"action": "REPAIR"},
+        },
+    )
+    lease = append_evidence_event(
+        root,
+        event_type="resource_lease",
+        source="uacos.runtime.leased_safe_execution",
+        status="blocked",
+        data={"reason": "resource_lease_conflict", "owner_id": "agent-a"},
+    )
+
     _write(
         root / "reports/evidence.json",
         {
@@ -118,6 +161,13 @@ def _seed_valid(root: Path) -> None:
             "unsupported_claims_zero": True,
             "false_completions_zero": True,
             "wrong_changes_zero": True,
+            "evidence_refs": {
+                "claim_firewall_enforced": [claim["event_id"]],
+                "mutation_gate_enforced": [mutation_gate["event_id"]],
+                "outcome_verification_passed": [outcome["event_id"]],
+                "intentional_failure_rollback_verified": [rollback["event_id"]],
+                "lease_conflict_blocked": [lease["event_id"]],
+            },
         },
     )
 
@@ -242,6 +292,40 @@ def test_missing_safety_evidence_flag_fails(tmp_path: Path):
     result = evaluate_phase3_closure(tmp_path, paths=_paths())
     assert result["status"] == "fail"
     assert "required_evidence_flag_not_true:lease_conflict_blocked" in result["blockers"]
+
+
+def test_true_boolean_without_canonical_ref_fails_provenance(tmp_path: Path):
+    _seed_valid(tmp_path)
+    evidence = json.loads((tmp_path / "reports/evidence.json").read_text())
+    evidence["evidence_refs"].pop("lease_conflict_blocked")
+    _write(tmp_path / "reports/evidence.json", evidence)
+    result = evaluate_phase3_closure(tmp_path, paths=_paths())
+    assert result["status"] == "fail"
+    assert "evidence_provenance_failed:canonical_evidence_refs_missing:lease_conflict_blocked" in result["blockers"]
+
+
+def test_wrong_event_type_cannot_support_lease_conflict_flag(tmp_path: Path):
+    _seed_valid(tmp_path)
+    evidence = json.loads((tmp_path / "reports/evidence.json").read_text())
+    evidence["evidence_refs"]["lease_conflict_blocked"] = evidence["evidence_refs"]["outcome_verification_passed"]
+    _write(tmp_path / "reports/evidence.json", evidence)
+    result = evaluate_phase3_closure(tmp_path, paths=_paths())
+    assert result["status"] == "fail"
+    assert "evidence_provenance_failed:canonical_evidence_ref_mismatch:lease_conflict_blocked" in result["blockers"]
+
+
+def test_unsupported_claim_decision_blocks_zero_unsupported_claims(tmp_path: Path):
+    _seed_valid(tmp_path)
+    append_evidence_event(
+        tmp_path,
+        event_type="claim_decision",
+        source="claim_firewall",
+        status="unsupported",
+        data={"claim_id": "C-BAD", "decision": "UNSUPPORTED"},
+    )
+    result = evaluate_phase3_closure(tmp_path, paths=_paths())
+    assert result["status"] == "fail"
+    assert "evidence_provenance_failed:unsupported_claim_decision_present" in result["blockers"]
 
 
 def test_comparative_requires_real_provider_and_minimum_repeats(tmp_path: Path):
