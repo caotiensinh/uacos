@@ -52,7 +52,7 @@ def _evidence_names(row: dict[str, Any]) -> set[str]:
 def _rows_for_task(rows: list[dict[str, Any]], task_id: str | None) -> list[dict[str, Any]]:
     if not task_id:
         return rows
-    return [row for row in rows if row.get("task_id") in {None, task_id}]
+    return [row for row in rows if row.get("task_id") == task_id]
 
 
 def _matching_checks(rows: list[dict[str, Any]], event_types: set[str], required: list[str]) -> tuple[set[str], set[str], list[str]]:
@@ -112,7 +112,8 @@ def verify_task_outcome(
 
     Verification layers are intentionally separate so test success cannot masquerade as
     a working system or a satisfied user outcome. Runtime/outcome checks are matched by
-    exact check IDs declared in Task Contract V2.
+    exact check IDs declared in Task Contract V2. When task_id is supplied, only evidence
+    bound to that exact task may satisfy the verdict.
     """
     repo_root = repo_root.resolve()
     if contract.get("status") != "ok" or contract.get("version") != 2:
