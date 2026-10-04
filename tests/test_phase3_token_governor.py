@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 
 from uacos.execution.evidence_ledger import evidence_ledger_path
 from uacos.orchestrator.contract import build_task_contract_v2
@@ -129,7 +131,7 @@ def test_actual_usage_over_estimate_is_recorded_then_stops_future_calls(tmp_path
     assert next_call["consumed_tokens"] == 110
 
 
-def test_real_reservations_prevent_parallel_oversubscription(tmp_path: Path):
+def test_real_reservations_prevent_overlap_oversubscription(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
     contract = _contract(100)
@@ -147,6 +149,34 @@ def test_real_reservations_prevent_parallel_oversubscription(tmp_path: Path):
     assert summary["total_tokens"] == 0
     assert summary["reserved_tokens"] == 60
     assert summary["active_reservations"] == ["call-a"]
+
+
+def test_concurrent_reservations_are_serialized_across_callers(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    contract = _contract(100)
+    barrier = Barrier(2)
+
+    def reserve(action_id: str):
+        barrier.wait()
+        return evaluate_token_budget(
+            repo,
+            contract,
+            task_id=TASK,
+            run_id=RUN,
+            action_id=action_id,
+            requested_tokens=60,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(reserve, ["call-a", "call-b"]))
+
+    decisions = sorted(result["decision"] for result in results)
+    summary = token_usage_summary(repo, task_id=TASK, run_id=RUN)
+    assert decisions == ["ALLOW", "STOP"]
+    assert summary["reserved_tokens"] == 60
+    assert len(summary["active_reservations"]) == 1
+    assert summary["ledger_integrity"]["status"] == "pass"
 
 
 def test_reservation_is_idempotent_and_settlement_replaces_it(tmp_path: Path):
